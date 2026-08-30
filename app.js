@@ -1,4 +1,4 @@
-import { courseData } from './holes/course.js';
+import { COURSES } from './holes/course.js';
 
 const canvas = document.getElementById('golf-canvas');
 const ctx = canvas.getContext('2d');
@@ -28,15 +28,89 @@ const HEX_DIRS = [
   { q: -1, r: 0 }   // NW (↖)
 ];
 
+// Current Game State
+let currentCourseKey = 'parkland';
+let currentHoles = COURSES.parkland.holes;
 let currentHoleIndex = 0;
-let currentHole = courseData[currentHoleIndex];
+let currentHole = currentHoles[currentHoleIndex];
 let playerPos = { ...currentHole.tee };
 let strokeCount = 0;
-
+let roundScores = new Array(9).fill(null);
 let shotTrails = [];
 
 function hexDistance(a, b) {
   return (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
+}
+
+function getClubRange(club, terrain) {
+  let min = 1;
+  let max = 6;
+  if (club === 'driver') { min = 5; max = 10; }
+  else if (club === 'longIron') { min = 3; max = 8; }
+  else if (club === 'shortIron') { min = 1; max = 6; }
+  else if (club === 'putter') { min = 1; max = 3; }
+
+  if (club !== 'putter') {
+    if (terrain === 'fairway') { min += 1; max += 1; }
+    if (terrain === 'rough') { min = Math.max(1, min - 1); max = Math.max(1, max - 1); }
+    if (terrain === 'deep_rough') { min = Math.max(1, min - 2); max = Math.max(1, max - 2); }
+  }
+  return { min, max };
+}
+
+function syncAimUI(dirIndex) {
+  const aimSelect = document.getElementById('aim-select');
+  if (aimSelect) aimSelect.value = String(dirIndex);
+
+  const pills = document.querySelectorAll('.aim-pill');
+  pills.forEach((pill) => {
+    if (pill.getAttribute('data-dir') === String(dirIndex)) {
+      pill.classList.add('active');
+    } else {
+      pill.classList.remove('active');
+    }
+  });
+}
+
+function handleCanvasAim(clientX, clientY) {
+  const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
+  if (finalTerrain === 'hole') return;
+
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const clickX = (clientX - rect.left) * scaleX;
+  const clickY = (clientY - rect.top) * scaleY;
+
+  const ballPx = hexToPixel(playerPos.q, playerPos.r);
+  const dx = clickX - ballPx.x;
+  const dy = clickY - ballPx.y;
+  const dist = Math.hypot(dx, dy);
+
+  if (dist < 4) return;
+
+  let bestDir = 0;
+  let bestDot = -Infinity;
+
+  for (let d = 0; d < 6; d++) {
+    const targetPx = hexToPixel(playerPos.q + HEX_DIRS[d].q, playerPos.r + HEX_DIRS[d].r);
+    const vecX = targetPx.x - ballPx.x;
+    const vecY = targetPx.y - ballPx.y;
+    const vLen = Math.hypot(vecX, vecY);
+    const dot = (dx * vecX + dy * vecY) / (dist * vLen);
+    if (dot > bestDot) {
+      bestDot = dot;
+      bestDir = d;
+    }
+  }
+
+  syncAimUI(bestDir);
+  render();
+
+  const dirNames = ['N (↑)', 'NE (↗)', 'SE (↘)', 'S (↓)', 'SW (↙)', 'NW (↖)'];
+  document.getElementById('status-message').innerText = `Aim set: ${dirNames[bestDir]}. Ready to roll!`;
 }
 
 function getHolePos() {
@@ -58,7 +132,7 @@ function isAdjacentToHole(pos) {
 function getTerrainAt(q, r) {
   const key = `${q},${r}`;
   if (currentHole.layout[key]) return currentHole.layout[key];
-  if (q <= -11 || q >= 11 || r <= -23 || r >= 3) return 'trees';
+  if (q <= -11 || q >= 11 || r <= -24 || r >= 3) return 'trees';
   return 'rough';
 }
 
@@ -92,6 +166,30 @@ function findNearestLand(targetQ, targetR) {
     }
   }
   return { ...currentHole.tee };
+}
+
+function calculateTotalScore() {
+  let playedPar = 0;
+  let totalStrokes = 0;
+  for (let i = 0; i < currentHoles.length; i++) {
+    if (roundScores[i] !== null) {
+      playedPar += currentHoles[i].par;
+      totalStrokes += roundScores[i];
+    }
+  }
+  const diff = totalStrokes - playedPar;
+  if (playedPar === 0) return { strokes: 0, diffStr: 'E', diff: 0 };
+  if (diff === 0) return { strokes: totalStrokes, diffStr: 'E', diff: 0 };
+  return { strokes: totalStrokes, diffStr: diff > 0 ? `+${diff}` : `${diff}`, diff };
+}
+
+function updateScoreboard() {
+  document.getElementById('hole-number').innerText = `${currentHole.id}/${currentHoles.length}`;
+  document.getElementById('hole-par').innerText = currentHole.par;
+  document.getElementById('stroke-count').innerText = strokeCount;
+
+  const total = calculateTotalScore();
+  document.getElementById('total-score-display').innerText = total.diffStr;
 }
 
 function updateClubOptions() {
@@ -139,6 +237,12 @@ function updateControlsState() {
     rollBtn.style.display = 'none';
     gimmeBtn.style.display = 'none';
     nextBtn.style.display = 'inline-block';
+    
+    if (currentHoleIndex === currentHoles.length - 1) {
+      nextBtn.innerText = 'ROUND FINISHED: SCORECARD 🏆';
+    } else {
+      nextBtn.innerText = 'NEXT HOLE →';
+    }
     return;
   }
 
@@ -156,24 +260,41 @@ function updateControlsState() {
   updateClubOptions();
 }
 
+function startCourse(courseKey) {
+  currentCourseKey = courseKey;
+  const courseInfo = COURSES[courseKey];
+  currentHoles = courseInfo.holes;
+  roundScores = new Array(currentHoles.length).fill(null);
+
+  document.getElementById('current-course-badge').innerText = courseInfo.name;
+  document.getElementById('modal-title').innerText = `${courseInfo.name} Scorecard`;
+
+  document.getElementById('landing-screen').style.display = 'none';
+  document.getElementById('game-screen').style.display = 'flex';
+
+  loadHole(0);
+}
+
+function returnToClubhouse() {
+  document.getElementById('scorecard-modal').style.display = 'none';
+  document.getElementById('game-screen').style.display = 'none';
+  document.getElementById('landing-screen').style.display = 'flex';
+}
+
 function loadHole(index) {
-  if (index >= courseData.length) {
-    document.getElementById('status-message').innerText = 'Round Complete! Well played.';
-    document.getElementById('roll-btn').style.display = 'none';
-    document.getElementById('gimme-btn').style.display = 'none';
-    document.getElementById('next-btn').style.display = 'none';
+  if (index >= currentHoles.length) {
+    showScorecardModal();
     return;
   }
+
   currentHoleIndex = index;
-  currentHole = courseData[currentHoleIndex];
+  currentHole = currentHoles[currentHoleIndex];
   playerPos = { ...currentHole.tee };
   strokeCount = 0;
   shotTrails = [];
 
-  document.getElementById('hole-number').innerText = currentHole.id;
-  document.getElementById('hole-par').innerText = currentHole.par;
-  document.getElementById('stroke-count').innerText = strokeCount;
-  document.getElementById('status-message').innerText = `Hole ${currentHole.id}: ${currentHole.name}`;
+  updateScoreboard();
+  document.getElementById('status-message').innerText = `Hole ${currentHole.id}: ${currentHole.name} (Par ${currentHole.par})`;
   
   document.getElementById('die-dist').innerText = '-';
   document.getElementById('die-dir').innerText = '-';
@@ -182,6 +303,7 @@ function loadHole(index) {
   document.getElementById('sub-dir').innerText = 'None';
   document.getElementById('sub-scat').innerText = '0 tiles';
 
+  syncAimUI(0);
   updateControlsState();
   render();
 }
@@ -335,22 +457,56 @@ function render() {
 
   const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
 
-  // Aiming Line Preview (only when hole is active)
+  // Aiming Line Preview & Range Indicators (only when hole is active)
   if (finalTerrain !== 'hole') {
     const aimDir = parseInt(document.getElementById('aim-select').value, 10);
+    const currentClub = document.getElementById('club-select').value;
     const currentPosPx = hexToPixel(playerPos.q, playerPos.r);
-    const targetQ = playerPos.q + HEX_DIRS[aimDir].q * 4;
-    const targetR = playerPos.r + HEX_DIRS[aimDir].r * 4;
-    const targetPx = hexToPixel(targetQ, targetR);
+    const range = getClubRange(currentClub, finalTerrain);
 
+    // Directional compass dots around the ball
+    for (let d = 0; d < 6; d++) {
+      const pTick = hexToPixel(playerPos.q + HEX_DIRS[d].q * 0.7, playerPos.r + HEX_DIRS[d].r * 0.7);
+      ctx.beginPath();
+      ctx.arc(pTick.x, pTick.y, d === aimDir ? 2.5 : 1.2, 0, 2 * Math.PI);
+      ctx.fillStyle = d === aimDir ? '#1b5e20' : 'rgba(0,0,0,0.22)';
+      ctx.fill();
+    }
+
+    const minQ = playerPos.q + HEX_DIRS[aimDir].q * range.min;
+    const minR = playerPos.r + HEX_DIRS[aimDir].r * range.min;
+    const minPx = hexToPixel(minQ, minR);
+
+    const maxQ = playerPos.q + HEX_DIRS[aimDir].q * range.max;
+    const maxR = playerPos.r + HEX_DIRS[aimDir].r * range.max;
+    const maxPx = hexToPixel(maxQ, maxR);
+
+    // Dotted flight trajectory
     ctx.beginPath();
-    ctx.setLineDash([4, 4]);
+    ctx.setLineDash([3, 3]);
     ctx.moveTo(currentPosPx.x, currentPosPx.y);
-    ctx.lineTo(targetPx.x, targetPx.y);
-    ctx.strokeStyle = '#1a1a1a';
-    ctx.lineWidth = 1.8;
+    ctx.lineTo(minPx.x, minPx.y);
+    ctx.strokeStyle = '#2e7d32';
+    ctx.lineWidth = 1.6;
     ctx.stroke();
+
+    // Solid landing range band
+    ctx.beginPath();
     ctx.setLineDash([]);
+    ctx.moveTo(minPx.x, minPx.y);
+    ctx.lineTo(maxPx.x, maxPx.y);
+    ctx.strokeStyle = '#1b5e20';
+    ctx.lineWidth = 2.8;
+    ctx.stroke();
+
+    // Max distance target crosshair / dot
+    ctx.beginPath();
+    ctx.arc(maxPx.x, maxPx.y, 3.5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#1b5e20';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 
   // Render Ball
@@ -359,44 +515,40 @@ function render() {
   ctx.arc(currentPosPx.x, currentPosPx.y, 4, 0, 2 * Math.PI);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
-  ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1;
   ctx.stroke();
 }
 
-function animateDie(elementId, finalValue) {
-  return new Promise(resolve => {
+function animateDie(elementId, finalValue, duration = 400) {
+  return new Promise((resolve) => {
     const el = document.getElementById(elementId);
     el.classList.add('rolling');
     const interval = setInterval(() => {
       el.innerText = Math.floor(Math.random() * 6) + 1;
-    }, 50);
+    }, 60);
 
     setTimeout(() => {
       clearInterval(interval);
       el.classList.remove('rolling');
       el.innerText = finalValue;
       resolve();
-    }, 350);
+    }, duration);
   });
+}
+
+function recordHoleFinish() {
+  roundScores[currentHoleIndex] = strokeCount;
+  updateScoreboard();
 }
 
 async function executeShot() {
   const club = document.getElementById('club-select').value;
   const aimDir = parseInt(document.getElementById('aim-select').value, 10);
-  const rollBtn = document.getElementById('roll-btn');
-  const gimmeBtn = document.getElementById('gimme-btn');
   const currentTerrain = getTerrainAt(playerPos.q, playerPos.r);
 
-  if (club === 'driver' && currentTerrain !== 'tee') {
-    document.getElementById('status-message').innerText = 'Driver allowed from Tee only!';
-    return;
-  }
-  if (club === 'longIron' && !['tee', 'fairway'].includes(currentTerrain)) {
-    document.getElementById('status-message').innerText = 'Long Iron allowed from Tee/Fairway only!';
-    return;
-  }
-
+  const rollBtn = document.getElementById('roll-btn');
+  const gimmeBtn = document.getElementById('gimme-btn');
   rollBtn.disabled = true;
   gimmeBtn.disabled = true;
 
@@ -512,7 +664,7 @@ async function executeShot() {
       final: { ...playerPos }
     });
 
-    document.getElementById('stroke-count').innerText = strokeCount;
+    updateScoreboard();
     render();
 
     const hazardName = landingTerrain === 'water' ? 'Water hazard' : 'Out of bounds in trees';
@@ -529,7 +681,7 @@ async function executeShot() {
       if (!isLand(slideQ, slideR)) {
         const nearestLand = findNearestLand(slideQ, slideR);
         slopeTo = { q: nearestLand.q, r: nearestLand.r };
-        playerPos = { q: nearestLand.q, r: nearestLand.r };
+        playerPos.q = nearestLand.q, r = nearestLand.r;
       } else {
         slopeTo = { q: slideQ, r: slideR };
         playerPos.q = slideQ;
@@ -552,12 +704,15 @@ async function executeShot() {
       final: { ...playerPos }
     });
 
-    document.getElementById('stroke-count').innerText = strokeCount;
+    updateScoreboard();
     render();
 
     const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
     if (finalTerrain === 'hole') {
-      document.getElementById('status-message').innerText = `Hole finished in ${strokeCount} strokes!`;
+      recordHoleFinish();
+      const diff = strokeCount - currentHole.par;
+      const diffName = diff <= -2 ? 'Eagle!' : diff === -1 ? 'Birdie!' : diff === 0 ? 'Par!' : diff === 1 ? 'Bogey.' : 'Double Bogey+.';
+      document.getElementById('status-message').innerText = `Hole completed in ${strokeCount} strokes! (${diffName})`;
     } else {
       document.getElementById('status-message').innerText = `Landed in ${TERRAIN[finalTerrain] ? TERRAIN[finalTerrain].label : 'Rough'}.`;
     }
@@ -587,20 +742,120 @@ function takeGimme() {
     final: { ...holePos }
   });
 
-  document.getElementById('stroke-count').innerText = strokeCount;
-  document.getElementById('status-message').innerText = `Gimme taken (+1 stroke)! Hole completed in ${strokeCount} strokes.`;
+  recordHoleFinish();
+  const diff = strokeCount - currentHole.par;
+  const diffName = diff <= -2 ? 'Eagle!' : diff === -1 ? 'Birdie!' : diff === 0 ? 'Par!' : diff === 1 ? 'Bogey.' : 'Double Bogey+.';
+  document.getElementById('status-message').innerText = `Gimme taken (+1 stroke)! Finished in ${strokeCount} (${diffName})`;
   
-  document.getElementById('roll-btn').style.display = 'none';
-  document.getElementById('gimme-btn').style.display = 'none';
-  document.getElementById('next-btn').style.display = 'inline-block';
-  
+  updateControlsState();
   render();
 }
 
-document.getElementById('aim-select').addEventListener('change', render);
+function showScorecardModal() {
+  const tbody = document.getElementById('scorecard-tbody');
+  tbody.innerHTML = '';
+
+  let totalPar = 0;
+  let totalStrokes = 0;
+
+  for (let i = 0; i < currentHoles.length; i++) {
+    const h = currentHoles[i];
+    const score = roundScores[i];
+    totalPar += h.par;
+    if (score !== null) totalStrokes += score;
+
+    const tr = document.createElement('tr');
+    const isCurrent = i === currentHoleIndex;
+    if (isCurrent) tr.style.fontWeight = 'bold';
+
+    let diffText = '-';
+    let cellClass = '';
+    if (score !== null) {
+      const diff = score - h.par;
+      if (diff <= -2) { diffText = `${diff}`; cellClass = 'score-cell-eagle'; }
+      else if (diff === -1) { diffText = '-1'; cellClass = 'score-cell-birdie'; }
+      else if (diff === 0) { diffText = 'E'; cellClass = 'score-cell-par'; }
+      else if (diff === 1) { diffText = '+1'; cellClass = 'score-cell-bogey'; }
+      else { diffText = `+${diff}`; cellClass = 'score-cell-double'; }
+    }
+
+    tr.innerHTML = `
+      <td>${h.id}${isCurrent ? ' ⛳' : ''}</td>
+      <td style="text-align: left; padding-left: 6px;">${h.name}</td>
+      <td>${h.par}</td>
+      <td class="${cellClass}">${score !== null ? score : '-'}</td>
+      <td class="${cellClass}">${diffText}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById('card-total-par').innerText = totalPar;
+  document.getElementById('card-total-strokes').innerText = totalStrokes > 0 ? totalStrokes : '-';
+  const total = calculateTotalScore();
+  document.getElementById('card-total-diff').innerText = total.diffStr;
+
+  document.getElementById('scorecard-modal').style.display = 'flex';
+}
+
+function hideScorecardModal() {
+  document.getElementById('scorecard-modal').style.display = 'none';
+}
+
+// Event Listeners
+document.getElementById('start-parkland-btn').addEventListener('click', () => startCourse('parkland'));
+document.getElementById('start-links-btn').addEventListener('click', () => startCourse('links'));
+
+document.getElementById('card-parkland').addEventListener('click', (e) => {
+  if (e.target.tagName !== 'BUTTON') startCourse('parkland');
+});
+document.getElementById('card-links').addEventListener('click', (e) => {
+  if (e.target.tagName !== 'BUTTON') startCourse('links');
+});
+
+document.getElementById('toggle-rules-btn').addEventListener('click', () => {
+  const drawer = document.getElementById('rules-drawer');
+  drawer.classList.toggle('rules-collapsed');
+  drawer.classList.toggle('rules-open');
+});
+
+document.getElementById('back-to-courses-btn').addEventListener('click', returnToClubhouse);
+document.getElementById('view-scorecard-btn').addEventListener('click', showScorecardModal);
+document.getElementById('close-modal-btn').addEventListener('click', hideScorecardModal);
+document.getElementById('modal-clubhouse-btn').addEventListener('click', returnToClubhouse);
+document.getElementById('modal-restart-course-btn').addEventListener('click', () => {
+  hideScorecardModal();
+  startCourse(currentCourseKey);
+});
+
+// Canvas interactive aiming (click & touch)
+canvas.addEventListener('click', (e) => {
+  handleCanvasAim(e.clientX, e.clientY);
+});
+
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches && e.touches.length > 0) {
+    const t = e.touches[0];
+    handleCanvasAim(t.clientX, t.clientY);
+  }
+}, { passive: true });
+
+// Aim pills buttons
+document.querySelectorAll('.aim-pill').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    const dir = parseInt(e.currentTarget.getAttribute('data-dir'), 10);
+    syncAimUI(dir);
+    render();
+  });
+});
+
+document.getElementById('aim-select').addEventListener('change', (e) => {
+  const dir = parseInt(e.target.value, 10);
+  syncAimUI(dir);
+  render();
+});
+
+document.getElementById('club-select').addEventListener('change', render);
+
 document.getElementById('roll-btn').addEventListener('click', executeShot);
 document.getElementById('gimme-btn').addEventListener('click', takeGimme);
 document.getElementById('next-btn').addEventListener('click', () => loadHole(currentHoleIndex + 1));
-
-loadHole(0);
-
