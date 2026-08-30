@@ -33,6 +33,8 @@ let currentHole = courseData[currentHoleIndex];
 let playerPos = { ...currentHole.tee };
 let strokeCount = 0;
 
+let shotTrails = [];
+
 function hexDistance(a, b) {
   return (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
 }
@@ -166,6 +168,7 @@ function loadHole(index) {
   currentHole = courseData[currentHoleIndex];
   playerPos = { ...currentHole.tee };
   strokeCount = 0;
+  shotTrails = [];
 
   document.getElementById('hole-number').innerText = currentHole.id;
   document.getElementById('hole-par').innerText = currentHole.par;
@@ -221,6 +224,38 @@ function drawHex(x, y, type, arrow = null) {
   }
 }
 
+function drawTrailSegment(p1, p2, color, width, isDashed = false, showArrow = true) {
+  if (p1.x === p2.x && p1.y === p2.y) return;
+  ctx.save();
+  ctx.beginPath();
+  if (isDashed) {
+    ctx.setLineDash([4, 3]);
+  } else {
+    ctx.setLineDash([]);
+  }
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  if (showArrow) {
+    const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    const arrowLen = 7;
+    const arrowAngle = Math.PI / 6;
+    ctx.beginPath();
+    ctx.moveTo(p2.x, p2.y);
+    ctx.lineTo(p2.x - arrowLen * Math.cos(angle - arrowAngle), p2.y - arrowLen * Math.sin(angle - arrowAngle));
+    ctx.lineTo(p2.x - arrowLen * Math.cos(angle + arrowAngle), p2.y - arrowLen * Math.sin(angle + arrowAngle));
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -235,23 +270,91 @@ function render() {
     }
   }
 
-  // Aiming Line Preview
-  const aimDir = parseInt(document.getElementById('aim-select').value, 10);
-  const currentPosPx = hexToPixel(playerPos.q, playerPos.r);
-  const targetQ = playerPos.q + HEX_DIRS[aimDir].q * 4;
-  const targetR = playerPos.r + HEX_DIRS[aimDir].r * 4;
-  const targetPx = hexToPixel(targetQ, targetR);
+  // Draw Shot Trails (Pencil path from where ball lay to where it finished)
+  shotTrails.forEach((trail, idx) => {
+    const isLatest = idx === shotTrails.length - 1;
+    ctx.save();
+    ctx.globalAlpha = isLatest ? 0.95 : 0.35;
 
-  ctx.beginPath();
-  ctx.setLineDash([4, 4]);
-  ctx.moveTo(currentPosPx.x, currentPosPx.y);
-  ctx.lineTo(targetPx.x, targetPx.y);
-  ctx.strokeStyle = '#1a1a1a';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.setLineDash([]);
+    const pStart = hexToPixel(trail.start.q, trail.start.r);
+    const pAimed = hexToPixel(trail.aimed.q, trail.aimed.r);
+
+    // 1. Origin marker where ball lay
+    ctx.beginPath();
+    ctx.arc(pStart.x, pStart.y, 3, 0, 2 * Math.PI);
+    ctx.fillStyle = '#b71c1c';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 2. Trajectory line for roll + modifiers (solid crimson line)
+    const hasScatterLine = trail.hasScatter && trail.scatter && (trail.scatter.q !== trail.aimed.q || trail.scatter.r !== trail.aimed.r);
+    drawTrailSegment(pStart, pAimed, '#d32f2f', 2.4, false, !hasScatterLine);
+
+    // 3. Scatter line (dashed amber line)
+    if (hasScatterLine) {
+      const pScatter = hexToPixel(trail.scatter.q, trail.scatter.r);
+      // Intermediate junction node at roll distance
+      ctx.beginPath();
+      ctx.arc(pAimed.x, pAimed.y, 2.5, 0, 2 * Math.PI);
+      ctx.fillStyle = '#f57c00';
+      ctx.fill();
+
+      drawTrailSegment(pAimed, pScatter, '#f57c00', 2, true, true);
+    }
+
+    // 4. Slope Slide (dotted cyan line)
+    if (trail.slopeFrom && trail.slopeTo) {
+      const pSlopeFrom = hexToPixel(trail.slopeFrom.q, trail.slopeFrom.r);
+      const pSlopeTo = hexToPixel(trail.slopeTo.q, trail.slopeTo.r);
+      drawTrailSegment(pSlopeFrom, pSlopeTo, '#0288d1', 1.8, true, true);
+    }
+
+    // 5. Hazard landing marker and drop path (if water or trees)
+    if (trail.hazard && trail.hazardPos && trail.dropPos) {
+      const pHazard = hexToPixel(trail.hazardPos.q, trail.hazardPos.r);
+      const pDrop = hexToPixel(trail.dropPos.q, trail.dropPos.r);
+
+      // Red X marker on hazard tile
+      ctx.strokeStyle = '#b71c1c';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pHazard.x - 3.5, pHazard.y - 3.5);
+      ctx.lineTo(pHazard.x + 3.5, pHazard.y + 3.5);
+      ctx.moveTo(pHazard.x + 3.5, pHazard.y - 3.5);
+      ctx.lineTo(pHazard.x - 3.5, pHazard.y + 3.5);
+      ctx.stroke();
+
+      // Drop connection line
+      drawTrailSegment(pHazard, pDrop, '#b71c1c', 1.5, true, true);
+    }
+
+    ctx.restore();
+  });
+
+  const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
+
+  // Aiming Line Preview (only when hole is active)
+  if (finalTerrain !== 'hole') {
+    const aimDir = parseInt(document.getElementById('aim-select').value, 10);
+    const currentPosPx = hexToPixel(playerPos.q, playerPos.r);
+    const targetQ = playerPos.q + HEX_DIRS[aimDir].q * 4;
+    const targetR = playerPos.r + HEX_DIRS[aimDir].r * 4;
+    const targetPx = hexToPixel(targetQ, targetR);
+
+    ctx.beginPath();
+    ctx.setLineDash([4, 4]);
+    ctx.moveTo(currentPosPx.x, currentPosPx.y);
+    ctx.lineTo(targetPx.x, targetPx.y);
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   // Render Ball
+  const currentPosPx = hexToPixel(playerPos.q, playerPos.r);
   ctx.beginPath();
   ctx.arc(currentPosPx.x, currentPosPx.y, 4, 0, 2 * Math.PI);
   ctx.fillStyle = '#ffffff';
@@ -296,6 +399,8 @@ async function executeShot() {
 
   rollBtn.disabled = true;
   gimmeBtn.disabled = true;
+
+  const shotStart = { q: playerPos.q, r: playerPos.r };
 
   // 1. Distance Roll
   const distRoll = Math.floor(Math.random() * 6) + 1;
@@ -349,20 +454,35 @@ async function executeShot() {
     document.getElementById('sub-scat').innerText = '0 tiles';
   }
 
-  let newQ = playerPos.q + HEX_DIRS[aimDir].q * baseDistance;
-  let newR = playerPos.r + HEX_DIRS[aimDir].r * baseDistance;
+  const aimedPos = {
+    q: shotStart.q + HEX_DIRS[aimDir].q * baseDistance,
+    r: shotStart.r + HEX_DIRS[aimDir].r * baseDistance
+  };
 
+  let scatterPos = null;
   if (scatDist > 0) {
-    newQ += HEX_DIRS[scatDirIndex].q * scatDist;
-    newR += HEX_DIRS[scatDirIndex].r * scatDist;
+    scatterPos = {
+      q: aimedPos.q + HEX_DIRS[scatDirIndex].q * scatDist,
+      r: aimedPos.r + HEX_DIRS[scatDirIndex].r * scatDist
+    };
   }
 
-  const landingTerrain = getTerrainAt(newQ, newR);
+  const landingHex = scatterPos ? { ...scatterPos } : { ...aimedPos };
+  const landingTerrain = getTerrainAt(landingHex.q, landingHex.r);
+
+  let hazardType = null;
+  let hazardPos = null;
+  let dropPos = null;
+  let slopeFrom = null;
+  let slopeTo = null;
 
   // If you land in water or trees (out of bounds), return ball to nearest hex on land + 1 shot penalty
   if (landingTerrain === 'water' || landingTerrain === 'trees') {
     strokeCount += 2; // 1 shot taken + 1 penalty stroke
-    const nearestLand = findNearestLand(newQ, newR);
+    hazardType = landingTerrain;
+    hazardPos = { ...landingHex };
+    const nearestLand = findNearestLand(landingHex.q, landingHex.r);
+    dropPos = { ...nearestLand };
     playerPos = { q: nearestLand.q, r: nearestLand.r };
 
     const arrow = currentHole.slopeArrows[`${playerPos.q},${playerPos.r}`];
@@ -370,10 +490,27 @@ async function executeShot() {
       const slideQ = playerPos.q + HEX_DIRS[arrow].q;
       const slideR = playerPos.r + HEX_DIRS[arrow].r;
       if (isLand(slideQ, slideR)) {
+        slopeFrom = { q: playerPos.q, r: playerPos.r };
+        slopeTo = { q: slideQ, r: slideR };
         playerPos.q = slideQ;
         playerPos.r = slideR;
       }
     }
+
+    shotTrails.push({
+      stroke: strokeCount,
+      club: club,
+      start: shotStart,
+      aimed: aimedPos,
+      hasScatter: scatDist > 0,
+      scatter: scatterPos,
+      hazard: hazardType,
+      hazardPos: hazardPos,
+      dropPos: dropPos,
+      slopeFrom: slopeFrom,
+      slopeTo: slopeTo,
+      final: { ...playerPos }
+    });
 
     document.getElementById('stroke-count').innerText = strokeCount;
     render();
@@ -381,21 +518,39 @@ async function executeShot() {
     const hazardName = landingTerrain === 'water' ? 'Water hazard' : 'Out of bounds in trees';
     document.getElementById('status-message').innerText = `${hazardName}! +1 penalty stroke. Ball placed on nearest land.`;
   } else {
-    playerPos = { q: newQ, r: newR };
+    playerPos = { q: landingHex.q, r: landingHex.r };
     strokeCount += 1;
 
     const arrow = currentHole.slopeArrows[`${playerPos.q},${playerPos.r}`];
     if (arrow !== undefined) {
       const slideQ = playerPos.q + HEX_DIRS[arrow].q;
       const slideR = playerPos.r + HEX_DIRS[arrow].r;
+      slopeFrom = { q: playerPos.q, r: playerPos.r };
       if (!isLand(slideQ, slideR)) {
         const nearestLand = findNearestLand(slideQ, slideR);
+        slopeTo = { q: nearestLand.q, r: nearestLand.r };
         playerPos = { q: nearestLand.q, r: nearestLand.r };
       } else {
+        slopeTo = { q: slideQ, r: slideR };
         playerPos.q = slideQ;
         playerPos.r = slideR;
       }
     }
+
+    shotTrails.push({
+      stroke: strokeCount,
+      club: club,
+      start: shotStart,
+      aimed: aimedPos,
+      hasScatter: scatDist > 0,
+      scatter: scatterPos,
+      hazard: null,
+      hazardPos: null,
+      dropPos: null,
+      slopeFrom: slopeFrom,
+      slopeTo: slopeTo,
+      final: { ...playerPos }
+    });
 
     document.getElementById('stroke-count').innerText = strokeCount;
     render();
@@ -412,9 +567,26 @@ async function executeShot() {
 }
 
 function takeGimme() {
+  const shotStart = { ...playerPos };
   strokeCount += 1;
   const holePos = getHolePos();
   playerPos = { ...holePos };
+
+  shotTrails.push({
+    stroke: strokeCount,
+    club: 'gimme',
+    start: shotStart,
+    aimed: { ...holePos },
+    hasScatter: false,
+    scatter: null,
+    hazard: null,
+    hazardPos: null,
+    dropPos: null,
+    slopeFrom: null,
+    slopeTo: null,
+    final: { ...holePos }
+  });
+
   document.getElementById('stroke-count').innerText = strokeCount;
   document.getElementById('status-message').innerText = `Gimme taken (+1 stroke)! Hole completed in ${strokeCount} strokes.`;
   
