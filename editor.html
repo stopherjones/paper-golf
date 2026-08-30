@@ -55,8 +55,11 @@
         <button style="background: #555; color: #fff; flex: 1 1 100%;" onclick="selectBrush(event, 'clearSlope')">Clear Slope</button>
       </div>
 
-      <button class="action-btn" onclick="generateCode()">EXPORT JS CODE</button>
-      <textarea id="output-code" readonly placeholder="Exported JS code will appear here..."></textarea>
+      <div style="display: flex; gap: 6px;">
+        <button class="action-btn" style="flex: 1;" onclick="generateCode()">EXPORT JS CODE</button>
+        <button class="action-btn" style="flex: 1; background: #0288d1;" onclick="loadExistingCode()">IMPORT / LOAD</button>
+      </div>
+      <textarea id="output-code" placeholder="Exported compact JS code will appear here (or paste code here and click IMPORT)..."></textarea>
     </div>
   </div>
   <script src="editor.js"></script>
