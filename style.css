@@ -125,6 +125,75 @@ body {
   color: #bf360c;
 }
 
+.badge-daily {
+  background-color: #fff9c4;
+  color: #f57f17;
+}
+
+.course-card-daily {
+  background: #fffdf5;
+  border: 2px solid #1a1a1a;
+  position: relative;
+}
+
+.daily-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.daily-date-badge {
+  font-size: 0.65rem;
+  font-weight: bold;
+  color: #795548;
+  background: #efebe9;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid #d7ccc8;
+  white-space: nowrap;
+}
+
+.daily-actions-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.btn-daily {
+  flex: 1;
+  background-color: #f57f17;
+  color: #1a1a1a;
+  box-shadow: 0 3px 0 #b35900;
+}
+
+.btn-daily:active {
+  box-shadow: 0 1px 0 #b35900;
+}
+
+.btn-reroll {
+  background-color: #f0ece1;
+  color: #1a1a1a;
+  border: 2px solid #1a1a1a;
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-weight: bold;
+  font-size: 0.75rem;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #1a1a1a;
+  white-space: nowrap;
+  transition: transform 0.05s ease, background-color 0.15s ease;
+}
+
+.btn-reroll:hover {
+  background-color: #e2dac7;
+}
+
+.btn-reroll:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #1a1a1a;
+}
+
 .course-par-tag {
   color: #555;
   font-size: 0.68rem;

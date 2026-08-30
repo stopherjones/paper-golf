@@ -18,6 +18,29 @@
       </header>
 
       <div id="course-cards-container">
+        <!-- Hole of the Day (Procedural Daily Challenge) -->
+        <div class="course-card course-card-daily" id="card-daily">
+          <div class="course-card-top">
+            <span class="badge badge-daily">⭐ HOLE OF THE DAY</span>
+            <span class="course-par-tag" id="daily-par-tag">PAR 4 • 1 HOLE</span>
+          </div>
+          <div class="daily-meta-row">
+            <h2 class="course-name" id="daily-hole-title">Hole of the Day</h2>
+            <span class="daily-date-badge" id="daily-date-badge">Today</span>
+          </div>
+          <p class="course-desc" id="daily-hole-desc">
+            Randomly generated daily golf challenge. Features procedural fairways, unique hazard hazards, and dynamic slope contours.
+          </p>
+          <div class="course-features" id="daily-features-container">
+            <span class="feat-tag">Procedural Map</span>
+            <span class="feat-tag">Daily Challenge</span>
+          </div>
+          <div class="daily-actions-row">
+            <button class="btn-tee-off btn-daily" id="start-daily-btn" data-course="daily">TEE OFF DAILY HOLE →</button>
+            <button type="button" class="btn-reroll" id="reroll-daily-btn" title="Roll a new random hole seed">🎲 New Hole</button>
+          </div>
+        </div>
+
         <!-- Parkland Course Card -->
         <div class="course-card" id="card-parkland">
           <div class="course-card-top">
@@ -175,7 +198,7 @@
               </tbody>
               <tfoot>
                 <tr>
-                  <th colspan="2">TOTAL (9 HOLES)</th>
+                  <th colspan="2" id="card-total-label">TOTAL</th>
                   <th id="card-total-par">36</th>
                   <th id="card-total-strokes">0</th>
                   <th id="card-total-diff">E</th>

@@ -1,4 +1,4 @@
-import { COURSES } from './holes/course.js';
+import { COURSES, refreshDailyHole } from './holes/course.js';
 
 const canvas = document.getElementById('golf-canvas');
 const ctx = canvas.getContext('2d');
@@ -751,6 +751,26 @@ function takeGimme() {
   render();
 }
 
+function updateDailyHoleCardUI() {
+  const daily = COURSES.daily;
+  if (!daily || !daily.holes || !daily.holes[0]) return;
+  const hole = daily.holes[0];
+
+  const titleEl = document.getElementById('daily-hole-title');
+  const parTagEl = document.getElementById('daily-par-tag');
+  const dateBadgeEl = document.getElementById('daily-date-badge');
+  const descEl = document.getElementById('daily-hole-desc');
+  const featEl = document.getElementById('daily-features-container');
+
+  if (titleEl) titleEl.innerText = hole.name;
+  if (parTagEl) parTagEl.innerText = `PAR ${hole.par} • 1 HOLE`;
+  if (dateBadgeEl) dateBadgeEl.innerText = daily.dateStr || 'Today';
+  if (descEl) descEl.innerText = daily.description;
+  if (featEl) {
+    featEl.innerHTML = daily.features.map(f => `<span class="feat-tag">${f}</span>`).join('');
+  }
+}
+
 function showScorecardModal() {
   const tbody = document.getElementById('scorecard-tbody');
   tbody.innerHTML = '';
@@ -789,6 +809,11 @@ function showScorecardModal() {
     tbody.appendChild(tr);
   }
 
+  const cardTotalLabel = document.getElementById('card-total-label');
+  if (cardTotalLabel) {
+    cardTotalLabel.innerText = currentHoles.length === 1 ? 'TOTAL (1 HOLE)' : `TOTAL (${currentHoles.length} HOLES)`;
+  }
+
   document.getElementById('card-total-par').innerText = totalPar;
   document.getElementById('card-total-strokes').innerText = totalStrokes > 0 ? totalStrokes : '-';
   const total = calculateTotalScore();
@@ -802,6 +827,18 @@ function hideScorecardModal() {
 }
 
 // Event Listeners
+document.getElementById('start-daily-btn').addEventListener('click', () => startCourse('daily'));
+document.getElementById('card-daily').addEventListener('click', (e) => {
+  if (e.target.tagName !== 'BUTTON') startCourse('daily');
+});
+
+document.getElementById('reroll-daily-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const randomSeed = Math.floor(Math.random() * 900000 + 100000);
+  refreshDailyHole(String(randomSeed));
+  updateDailyHoleCardUI();
+});
+
 document.getElementById('start-parkland-btn').addEventListener('click', () => startCourse('parkland'));
 document.getElementById('start-links-btn').addEventListener('click', () => startCourse('links'));
 
@@ -859,3 +896,6 @@ document.getElementById('club-select').addEventListener('change', render);
 document.getElementById('roll-btn').addEventListener('click', executeShot);
 document.getElementById('gimme-btn').addEventListener('click', takeGimme);
 document.getElementById('next-btn').addEventListener('click', () => loadHole(currentHoleIndex + 1));
+
+// Initialize Hole of the Day UI card on landing screen
+updateDailyHoleCardUI();

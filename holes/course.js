@@ -1,5 +1,6 @@
 import { parklandCourse } from './parkland.js';
 import { linksCourse } from './links.js';
+import { generateDailyHole, getTodaySeedString } from './dailyHole.js';
 
 export const COURSES = {
   parkland: {
@@ -23,8 +24,15 @@ export const COURSES = {
     description: 'Treacherous coastal winds, punishing deep rough, hazardous pot bunkers, and steep crown greens.',
     features: ['Narrow Fairways', 'Punishing Deep Rough', 'Pot Bunkers', 'Contoured Slopes'],
     holes: linksCourse
-  }
+  },
+  daily: generateDailyHole(getTodaySeedString())
 };
 
+export function refreshDailyHole(seed) {
+  COURSES.daily = generateDailyHole(seed || getTodaySeedString());
+  return COURSES.daily;
+}
+
 export const courseData = parklandCourse;
+
 
