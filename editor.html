@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course Level Editor</title>
+  <style>
+    * { box-sizing: border-box; user-select: none; }
+    body { font-family: monospace; background: #232323; color: #fff; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+    h2 { margin: 5px 0 15px 0; font-size: 1.2rem; }
+    #editor-wrapper { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; width: 100%; max-width: 800px; }
+    canvas { border: 2px solid #9ccc65; background: #dcedc8; cursor: crosshair; }
+    #toolbar { display: flex; flex-direction: column; gap: 8px; width: 340px; background: #333; padding: 12px; border-radius: 6px; border: 1px solid #444; }
+    .section-title { font-size: 0.65rem; font-weight: bold; letter-spacing: 1px; color: #aaa; margin-top: 4px; }
+    .palette { display: flex; flex-wrap: wrap; gap: 4px; }
+    .palette button { flex: 1 1 30%; padding: 6px 4px; font-weight: bold; border: 2px solid #000; cursor: pointer; border-radius: 4px; font-size: 0.7rem; font-family: inherit; }
+    .palette button.active { border-color: #ffffff !important; box-shadow: 0 0 6px #ffffff; transform: scale(1.02); }
+    .field-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.8rem; }
+    input { width: 120px; padding: 4px; background: #222; border: 1px solid #555; color: #fff; font-family: inherit; border-radius: 3px; }
+    textarea { width: 100%; height: 140px; background: #111; color: #76ff03; font-family: monospace; font-size: 0.65rem; border: 1px solid #444; margin-top: 4px; padding: 6px; border-radius: 4px; resize: vertical; }
+    .action-btn { background: #4caf50; color: white; padding: 10px; border: none; font-weight: bold; cursor: pointer; border-radius: 4px; margin-top: 6px; font-family: inherit; font-size: 0.85rem; }
+    .action-btn:hover { background: #43a047; }
+  </style>
+</head>
+<body>
+  <h2>Visual Hole Editor</h2>
+  <div id="editor-wrapper">
+    <canvas id="edit-canvas" width="360" height="420"></canvas>
+    
+    <div id="toolbar">
+      <div class="field-row"><label for="hole-id">Hole Number:</label><input type="number" id="hole-id" value="3"></div>
+      <div class="field-row"><label for="hole-par">Par:</label><input type="number" id="hole-par" value="4"></div>
+      <div class="field-row"><label for="hole-name">Hole Name:</label><input type="text" id="hole-name" value="Custom Hole"></div>
+      
+      <span class="section-title">TERRAIN PALETTE</span>
+      <div class="palette">
+        <button style="background: #cddc39; color: #000;" onclick="selectBrush(event, 'tee')">Tee</button>
+        <button style="background: #4caf50; color: #fff;" class="active" onclick="selectBrush(event, 'fairway')">Fairway</button>
+        <button style="background: #fbc02d; color: #000;" onclick="selectBrush(event, 'sand')">Bunker</button>
+        <button style="background: #0288d1; color: #fff;" onclick="selectBrush(event, 'water')">Water</button>
+        <button style="background: #2e7d32; color: #fff;" onclick="selectBrush(event, 'green')">Green</button>
+        <button style="background: #1a1a1a; color: #fff;" onclick="selectBrush(event, 'hole')">Pin/Hole</button>
+        <button style="background: #81c784; color: #000;" onclick="selectBrush(event, 'trees')">Trees</button>
+        <button style="background: #dcedc8; color: #000;" onclick="selectBrush(event, 'rough')">Eraser</button>
+      </div>
+
+      <span class="section-title">GREEN SLOPES</span>
+      <div class="palette">
+        <button style="background: #444; color: #fff;" onclick="selectBrush(event, 'slope', 0)">Slope N (↑)</button>
+        <button style="background: #444; color: #fff;" onclick="selectBrush(event, 'slope', 1)">Slope NE (↗)</button>
+        <button style="background: #444; color: #fff;" onclick="selectBrush(event, 'slope', 2)">Slope SE (↘)</button>
+        <button style="background: #444; color: #fff;" onclick="selectBrush(event, 'slope', 3)">Slope S (↓)</button>
+        <button style="background: #444; color: #fff;" onclick="selectBrush(event, 'slope', 4)">Slope SW (↙)</button>
+        <button style="background: #444; color: #fff;" onclick="selectBrush(event, 'slope', 5)">Slope NW (↖)</button>
+        <button style="background: #555; color: #fff; flex: 1 1 100%;" onclick="selectBrush(event, 'clearSlope')">Clear Slope</button>
+      </div>
+
+      <button class="action-btn" onclick="generateCode()">EXPORT JS CODE</button>
+      <textarea id="output-code" readonly placeholder="Exported JS code will appear here..."></textarea>
+    </div>
+  </div>
+  <script src="editor.js"></script>
+</body>
+</html>

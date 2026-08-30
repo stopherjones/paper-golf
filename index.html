@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Paper & Dice Golf</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app-container">
+    <header id="scoreboard">
+      <div class="score-box"><span>HOLE</span><strong id="hole-number">1</strong></div>
+      <div class="score-box"><span>PAR</span><strong id="hole-par">4</strong></div>
+      <div class="score-box"><span>STROKES</span><strong id="stroke-count">0</strong></div>
+    </header>
+
+    <div id="canvas-wrapper">
+      <canvas id="golf-canvas" width="360" height="420"></canvas>
+    </div>
+
+    <div id="dice-tray">
+      <div class="die-card">
+        <span class="die-label">DISTANCE</span>
+        <div class="die" id="die-dist">-</div>
+        <span class="die-sub" id="sub-dist">0 tiles</span>
+      </div>
+      <div class="die-card">
+        <span class="die-label">SCATTER DIR</span>
+        <div class="die" id="die-dir">-</div>
+        <span class="die-sub" id="sub-dir">None</span>
+      </div>
+      <div class="die-card">
+        <span class="die-label">SCATTER DIST</span>
+        <div class="die" id="die-scat">-</div>
+        <span class="die-sub" id="sub-scat">0 tiles</span>
+      </div>
+    </div>
+
+    <footer id="control-panel">
+      <div class="control-row">
+        <select id="club-select">
+          <option value="driver">Driver (1D6+4) — Tee only</option>
+          <option value="longIron">Long Iron (1D6+2) — Tee/Fairway</option>
+          <option value="shortIron">Short Iron (1D6)</option>
+          <option value="putter">Putter (1D6: 1-3)</option>
+        </select>
+        <select id="aim-select">
+          <option value="0">Aim: N (↑)</option>
+          <option value="1">Aim: NE (↗)</option>
+          <option value="2">Aim: SE (↘)</option>
+          <option value="3">Aim: S (↓)</option>
+          <option value="4">Aim: SW (↙)</option>
+          <option value="5">Aim: NW (↖)</option>
+        </select>
+      </div>
+      <button id="roll-btn">ROLL SHOT</button>
+      <button id="gimme-btn" style="display: none; background-color: #ff9800;">GIMME (+1)</button>
+      <button id="next-btn" style="display: none;">NEXT HOLE</button>
+      <div id="status-message">Select club & direction, then roll.</div>
+    </footer>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

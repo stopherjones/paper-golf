@@ -1,0 +1,170 @@
+* {
+  box-sizing: border-box;
+  user-select: none;
+}
+
+body {
+  font-family: 'Courier New', Courier, monospace;
+  background-color: #232323;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#app-container {
+  width: 100%;
+  max-width: 400px;
+  height: 100vh;
+  max-height: 840px;
+  background-color: #f7f3e8;
+  display: flex;
+  flex-direction: column;
+  border: 2px solid #1a1a1a;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+#scoreboard {
+  display: flex;
+  justify-content: space-around;
+  background-color: #e2dac7;
+  padding: 6px;
+  border-bottom: 2px solid #1a1a1a;
+}
+
+.score-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.score-box span {
+  font-size: 0.65rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.score-box strong {
+  font-size: 1.1rem;
+}
+
+#canvas-wrapper {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #dcedc8;
+  padding: 2px;
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  max-height: 420px;
+  border: 1px solid #9ccc65;
+  background-color: #dcedc8;
+}
+
+#dice-tray {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: #ede5d3;
+  border-top: 2px solid #1a1a1a;
+  border-bottom: 2px solid #1a1a1a;
+  gap: 8px;
+}
+
+.die-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #ffffff;
+  border: 2px solid #1a1a1a;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.die-label {
+  font-size: 0.55rem;
+  font-weight: bold;
+}
+
+.die {
+  width: 32px;
+  height: 32px;
+  background: #fffdf5;
+  border: 2px solid #333;
+  border-radius: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin: 3px 0;
+  box-shadow: 2px 2px 0px #333;
+}
+
+.die.rolling {
+  animation: shake 0.1s infinite;
+  background-color: #fff3c4;
+}
+
+.die-sub {
+  font-size: 0.65rem;
+  color: #555;
+}
+
+#control-panel {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background-color: #e2dac7;
+}
+
+.control-row {
+  display: flex;
+  gap: 6px;
+}
+
+select, button {
+  font-family: inherit;
+  font-weight: bold;
+  border: 2px solid #1a1a1a;
+  border-radius: 4px;
+  padding: 6px;
+}
+
+#club-select { flex: 2; background: #fff; font-size: 0.75rem; }
+#aim-select { flex: 1; background: #fff; font-size: 0.75rem; }
+
+button {
+  background-color: #4caf50;
+  color: white;
+  font-size: 0.95rem;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #2e7d32;
+}
+
+button:disabled {
+  background-color: #a5d6a7;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+#status-message {
+  font-size: 0.72rem;
+  text-align: center;
+  min-height: 1.2em;
+  color: #333;
+}
+
+@keyframes shake {
+  0% { transform: translate(1px, 1px) rotate(0deg); }
+  50% { transform: translate(-1px, -1px) rotate(1deg); }
+  100% { transform: translate(1px, -1px) rotate(0deg); }
+}
