@@ -33,9 +33,133 @@ let currentHole = courseData[currentHoleIndex];
 let playerPos = { ...currentHole.tee };
 let strokeCount = 0;
 
+function hexDistance(a, b) {
+  return (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
+}
+
+function getHolePos() {
+  if (currentHole.hole) return currentHole.hole;
+  for (const [key, terrain] of Object.entries(currentHole.layout)) {
+    if (terrain === 'hole') {
+      const [q, r] = key.split(',').map(Number);
+      return { q, r };
+    }
+  }
+  return { q: 0, r: 0 };
+}
+
+function isAdjacentToHole(pos) {
+  const holePos = getHolePos();
+  return hexDistance(pos, holePos) === 1;
+}
+
+function getTerrainAt(q, r) {
+  const key = `${q},${r}`;
+  if (currentHole.layout[key]) return currentHole.layout[key];
+  if (q <= -11 || q >= 11 || r <= -23 || r >= 3) return 'trees';
+  return 'rough';
+}
+
+function isLand(q, r) {
+  const terrain = getTerrainAt(q, r);
+  return terrain !== 'water' && terrain !== 'trees';
+}
+
+function findNearestLand(targetQ, targetR) {
+  if (isLand(targetQ, targetR)) return { q: targetQ, r: targetR };
+
+  for (let radius = 1; radius <= 35; radius++) {
+    const candidates = [];
+    for (let q = -radius; q <= radius; q++) {
+      const r1 = Math.max(-radius, -q - radius);
+      const r2 = Math.min(radius, -q + radius);
+      for (let r = r1; r <= r2; r++) {
+        if (Math.abs(q) === radius || Math.abs(r) === radius || Math.abs(q + r) === radius) {
+          const checkQ = targetQ + q;
+          const checkR = targetR + r;
+          if (isLand(checkQ, checkR)) {
+            const distToPrev = hexDistance({ q: checkQ, r: checkR }, playerPos);
+            candidates.push({ q: checkQ, r: checkR, distToPrev });
+          }
+        }
+      }
+    }
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => a.distToPrev - b.distToPrev);
+      return { q: candidates[0].q, r: candidates[0].r };
+    }
+  }
+  return { ...currentHole.tee };
+}
+
+function updateClubOptions() {
+  const clubSelect = document.getElementById('club-select');
+  const currentTerrain = getTerrainAt(playerPos.q, playerPos.r);
+  const prevClub = clubSelect.value;
+
+  const availableClubs = [];
+  if (currentTerrain === 'tee') {
+    availableClubs.push({ value: 'driver', label: 'Driver (1D6+4) — Tee only' });
+  }
+  if (['tee', 'fairway'].includes(currentTerrain)) {
+    availableClubs.push({ value: 'longIron', label: 'Long Iron (1D6+2) — Tee/Fairway' });
+  }
+  availableClubs.push({ value: 'shortIron', label: 'Short Iron (1D6)' });
+  availableClubs.push({ value: 'putter', label: 'Putter (1D6: 1-3)' });
+
+  clubSelect.innerHTML = '';
+  for (const club of availableClubs) {
+    const opt = document.createElement('option');
+    opt.value = club.value;
+    opt.textContent = club.label;
+    clubSelect.appendChild(opt);
+  }
+
+  const stillAvailable = availableClubs.some(c => c.value === prevClub);
+  if (stillAvailable) {
+    clubSelect.value = prevClub;
+  } else if (currentTerrain === 'green') {
+    clubSelect.value = 'putter';
+  } else if (availableClubs.some(c => c.value === 'shortIron')) {
+    clubSelect.value = 'shortIron';
+  } else {
+    clubSelect.value = availableClubs[0].value;
+  }
+}
+
+function updateControlsState() {
+  const rollBtn = document.getElementById('roll-btn');
+  const gimmeBtn = document.getElementById('gimme-btn');
+  const nextBtn = document.getElementById('next-btn');
+
+  const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
+  if (finalTerrain === 'hole') {
+    rollBtn.style.display = 'none';
+    gimmeBtn.style.display = 'none';
+    nextBtn.style.display = 'inline-block';
+    return;
+  }
+
+  rollBtn.style.display = 'inline-block';
+  rollBtn.disabled = false;
+  nextBtn.style.display = 'none';
+
+  if (isAdjacentToHole(playerPos)) {
+    gimmeBtn.style.display = 'inline-block';
+    gimmeBtn.disabled = false;
+  } else {
+    gimmeBtn.style.display = 'none';
+  }
+
+  updateClubOptions();
+}
+
 function loadHole(index) {
   if (index >= courseData.length) {
     document.getElementById('status-message').innerText = 'Round Complete! Well played.';
+    document.getElementById('roll-btn').style.display = 'none';
+    document.getElementById('gimme-btn').style.display = 'none';
+    document.getElementById('next-btn').style.display = 'none';
     return;
   }
   currentHoleIndex = index;
@@ -46,11 +170,16 @@ function loadHole(index) {
   document.getElementById('hole-number').innerText = currentHole.id;
   document.getElementById('hole-par').innerText = currentHole.par;
   document.getElementById('stroke-count').innerText = strokeCount;
-  document.getElementById('roll-btn').style.display = 'inline-block';
-  document.getElementById('roll-btn').disabled = false;
-  document.getElementById('next-btn').style.display = 'none';
   document.getElementById('status-message').innerText = `Hole ${currentHole.id}: ${currentHole.name}`;
   
+  document.getElementById('die-dist').innerText = '-';
+  document.getElementById('die-dir').innerText = '-';
+  document.getElementById('die-scat').innerText = '-';
+  document.getElementById('sub-dist').innerText = '0 tiles';
+  document.getElementById('sub-dir').innerText = 'None';
+  document.getElementById('sub-scat').innerText = '0 tiles';
+
+  updateControlsState();
   render();
 }
 
@@ -58,13 +187,6 @@ function hexToPixel(q, r) {
   const x = HEX_RADIUS * (3 / 2 * q);
   const y = HEX_RADIUS * Math.sqrt(3) * (r + q / 2);
   return { x: ORIGIN_X + x, y: ORIGIN_Y + y };
-}
-
-function getTerrainAt(q, r) {
-  const key = `${q},${r}`;
-  if (currentHole.layout[key]) return currentHole.layout[key];
-  if (q <= -11 || q >= 11 || r <= -23 || r >= 3) return 'trees';
-  return 'rough';
 }
 
 function drawHex(x, y, type, arrow = null) {
@@ -160,6 +282,7 @@ async function executeShot() {
   const club = document.getElementById('club-select').value;
   const aimDir = parseInt(document.getElementById('aim-select').value, 10);
   const rollBtn = document.getElementById('roll-btn');
+  const gimmeBtn = document.getElementById('gimme-btn');
   const currentTerrain = getTerrainAt(playerPos.q, playerPos.r);
 
   if (club === 'driver' && currentTerrain !== 'tee') {
@@ -172,24 +295,35 @@ async function executeShot() {
   }
 
   rollBtn.disabled = true;
+  gimmeBtn.disabled = true;
 
   // 1. Distance Roll
   const distRoll = Math.floor(Math.random() * 6) + 1;
   await animateDie('die-dist', distRoll);
 
+  // When playing in sand, add -1 to the D6 roll (min 0)
+  let effectiveRoll = distRoll;
+  if (currentTerrain === 'sand') {
+    effectiveRoll = Math.max(0, distRoll - 1);
+  }
+
   let baseDistance = 0;
-  if (club === 'driver') baseDistance = distRoll + 4;
-  else if (club === 'longIron') baseDistance = distRoll + 2;
-  else if (club === 'shortIron') baseDistance = distRoll;
-  else if (club === 'putter') baseDistance = distRoll <= 2 ? 1 : distRoll <= 4 ? 2 : 3;
+  if (club === 'driver') baseDistance = effectiveRoll + 4;
+  else if (club === 'longIron') baseDistance = effectiveRoll + 2;
+  else if (club === 'shortIron') baseDistance = effectiveRoll;
+  else if (club === 'putter') baseDistance = effectiveRoll <= 0 ? 0 : effectiveRoll <= 2 ? 1 : effectiveRoll <= 4 ? 2 : 3;
 
   if (club !== 'putter') {
     if (currentTerrain === 'fairway') baseDistance += 1;
-    if (['rough', 'sand'].includes(currentTerrain)) baseDistance = Math.max(1, baseDistance - 1);
-    if (['deep_rough', 'trees'].includes(currentTerrain)) baseDistance = Math.max(1, baseDistance - 2);
+    if (['rough'].includes(currentTerrain)) baseDistance = Math.max(1, baseDistance - 1);
+    if (['deep_rough'].includes(currentTerrain)) baseDistance = Math.max(1, baseDistance - 2);
   }
 
-  document.getElementById('sub-dist').innerText = `${baseDistance} tiles`;
+  if (currentTerrain === 'sand') {
+    document.getElementById('sub-dist').innerText = `${baseDistance} tiles (Sand -1: ${effectiveRoll})`;
+  } else {
+    document.getElementById('sub-dist').innerText = `${baseDistance} tiles`;
+  }
 
   // 2. Scatter Roll
   let scatDist = 0;
@@ -225,36 +359,76 @@ async function executeShot() {
 
   const landingTerrain = getTerrainAt(newQ, newR);
 
-  if (landingTerrain === 'water') {
-    document.getElementById('status-message').innerText = 'Water hazard! Penalty stroke applied.';
-    strokeCount += 2;
+  // If you land in water or trees (out of bounds), return ball to nearest hex on land + 1 shot penalty
+  if (landingTerrain === 'water' || landingTerrain === 'trees') {
+    strokeCount += 2; // 1 shot taken + 1 penalty stroke
+    const nearestLand = findNearestLand(newQ, newR);
+    playerPos = { q: nearestLand.q, r: nearestLand.r };
+
+    const arrow = currentHole.slopeArrows[`${playerPos.q},${playerPos.r}`];
+    if (arrow !== undefined) {
+      const slideQ = playerPos.q + HEX_DIRS[arrow].q;
+      const slideR = playerPos.r + HEX_DIRS[arrow].r;
+      if (isLand(slideQ, slideR)) {
+        playerPos.q = slideQ;
+        playerPos.r = slideR;
+      }
+    }
+
+    document.getElementById('stroke-count').innerText = strokeCount;
+    render();
+
+    const hazardName = landingTerrain === 'water' ? 'Water hazard' : 'Out of bounds in trees';
+    document.getElementById('status-message').innerText = `${hazardName}! +1 penalty stroke. Ball placed on nearest land.`;
   } else {
     playerPos = { q: newQ, r: newR };
     strokeCount += 1;
 
     const arrow = currentHole.slopeArrows[`${playerPos.q},${playerPos.r}`];
     if (arrow !== undefined) {
-      playerPos.q += HEX_DIRS[arrow].q;
-      playerPos.r += HEX_DIRS[arrow].r;
+      const slideQ = playerPos.q + HEX_DIRS[arrow].q;
+      const slideR = playerPos.r + HEX_DIRS[arrow].r;
+      if (!isLand(slideQ, slideR)) {
+        const nearestLand = findNearestLand(slideQ, slideR);
+        playerPos = { q: nearestLand.q, r: nearestLand.r };
+      } else {
+        playerPos.q = slideQ;
+        playerPos.r = slideR;
+      }
+    }
+
+    document.getElementById('stroke-count').innerText = strokeCount;
+    render();
+
+    const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
+    if (finalTerrain === 'hole') {
+      document.getElementById('status-message').innerText = `Hole finished in ${strokeCount} strokes!`;
+    } else {
+      document.getElementById('status-message').innerText = `Landed in ${TERRAIN[finalTerrain] ? TERRAIN[finalTerrain].label : 'Rough'}.`;
     }
   }
 
-  document.getElementById('stroke-count').innerText = strokeCount;
-  render();
+  updateControlsState();
+}
 
-  const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
-  if (finalTerrain === 'hole') {
-    document.getElementById('status-message').innerText = `Hole finished in ${strokeCount} strokes!`;
-    document.getElementById('roll-btn').style.display = 'none';
-    document.getElementById('next-btn').style.display = 'inline-block';
-  } else {
-    document.getElementById('status-message').innerText = `Landed in ${TERRAIN[finalTerrain].label}.`;
-    rollBtn.disabled = false;
-  }
+function takeGimme() {
+  strokeCount += 1;
+  const holePos = getHolePos();
+  playerPos = { ...holePos };
+  document.getElementById('stroke-count').innerText = strokeCount;
+  document.getElementById('status-message').innerText = `Gimme taken (+1 stroke)! Hole completed in ${strokeCount} strokes.`;
+  
+  document.getElementById('roll-btn').style.display = 'none';
+  document.getElementById('gimme-btn').style.display = 'none';
+  document.getElementById('next-btn').style.display = 'inline-block';
+  
+  render();
 }
 
 document.getElementById('aim-select').addEventListener('change', render);
 document.getElementById('roll-btn').addEventListener('click', executeShot);
+document.getElementById('gimme-btn').addEventListener('click', takeGimme);
 document.getElementById('next-btn').addEventListener('click', () => loadHole(currentHoleIndex + 1));
 
 loadHole(0);
+

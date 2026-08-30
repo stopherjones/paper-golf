@@ -148,6 +148,30 @@ button {
   font-size: 0.95rem;
   cursor: pointer;
   box-shadow: 0 3px 0 #2e7d32;
+  transition: transform 0.05s ease, background-color 0.15s ease;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #2e7d32;
+}
+
+#gimme-btn {
+  background-color: #ff9800;
+  box-shadow: 0 3px 0 #e65100;
+}
+
+#gimme-btn:active:not(:disabled) {
+  box-shadow: 0 1px 0 #e65100;
+}
+
+#next-btn {
+  background-color: #0288d1;
+  box-shadow: 0 3px 0 #01579b;
+}
+
+#next-btn:active:not(:disabled) {
+  box-shadow: 0 1px 0 #01579b;
 }
 
 button:disabled {

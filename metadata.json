@@ -1,0 +1,8 @@
+{
+  "name": "Paper & Dice Golf",
+  "description": "A turn-based paper and dice golf game played on a hex grid.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
