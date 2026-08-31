@@ -1,7 +1,17 @@
 // ==========================================
 // PROCEDURAL HOLE OF THE DAY GENERATOR
-// Seeded deterministic generator for daily / random challenge holes
+// Uses compact parseCoords format & rich strategic archetypes
 // ==========================================
+
+export function parseCoords(spec) {
+  const layout = {};
+  for (const [type, coords] of Object.entries(spec)) {
+    if (typeof coords === 'string') {
+      coords.trim().split(/\s+/).forEach(c => { if (c) layout[c] = type; });
+    }
+  }
+  return layout;
+}
 
 function createPrng(seedStr) {
   let s = 0;
@@ -22,50 +32,58 @@ const NAME_PREFIXES = [
   "Eagle's", "Whispering", "Devil's", "Golden", "Pine Valley", "Falcon's",
   "Hidden", "Shadow", "Emerald", "Sunset", "Windy", "Coyote", "Highland",
   "Timber", "Breezy", "King's", "Stone", "Misty", "Copper", "Thunder",
-  "Silver", "Bear", "Raven's", "Oak", "Heron's", "Cliffside", "Wildcat"
+  "Silver", "Bear", "Raven's", "Oak", "Heron's", "Cliffside", "Wildcat",
+  "Ballybunion", "Cypress", "Sawgrass", "St. Andrews", "Carnoustie", "Torrey"
 ];
 
 const NAME_SUFFIXES = [
   "Creek", "Ridge", "Bluff", "Ledge", "Hollow", "Dunes", "Point", "Basin",
   "Cove", "Spur", "Bend", "Glade", "Corner", "Meadow", "Pond", "Crest",
-  "Pass", "Gorge", "Falls", "Sanctuary", "Oasis", "Knoll", "Haven"
+  "Pass", "Gorge", "Falls", "Sanctuary", "Oasis", "Knoll", "Haven", "Alley"
 ];
 
-const THEME_TYPES = [
+const ARCHETYPES = [
   {
-    name: 'Parkland Woods',
-    features: ['Fairway Bunkers', 'Serene Pond', 'Pencil Pines'],
-    hasWater: true,
-    waterStyle: 'lake',
-    hasDeepRough: false
+    id: 'split_fairway',
+    name: 'Risk-Reward Split Fairway',
+    parWeights: [0.0, 0.65, 0.35], // Par 4 or 5
+    tag: 'Dual Fairway Route',
+    desc: 'Features an aggressive shortcut over hazards vs a safe winding fairway.'
   },
   {
-    name: 'Dune Links',
-    features: ['Pot Bunkers', 'Punishing Deep Rough', 'Contoured Slopes'],
-    hasWater: false,
-    waterStyle: 'none',
-    hasDeepRough: true
+    id: 'island_green',
+    name: 'Island Peninsula',
+    parWeights: [0.55, 0.45, 0.0], // Par 3 or 4
+    tag: 'Moat Water Hazard',
+    desc: 'Demands pinpoint target precision to a protected green complex.'
   },
   {
-    name: 'Emerald Island',
-    features: ['Island Green', 'Water Hazard Moat', 'Precision Approach'],
-    hasWater: true,
-    waterStyle: 'island',
-    hasDeepRough: true
+    id: 'cross_creek',
+    name: 'Barranca Cross-Creek',
+    parWeights: [0.0, 0.70, 0.30], // Par 4 or 5
+    tag: 'Fairway Cross-Hazard',
+    desc: 'Forces a strategic choice: lay up short of the creek or bomb a driver across.'
   },
   {
-    name: 'Highland Ridge',
-    features: ['Dogleg Contour', 'Severe Slope Arrows', 'Green-side Traps'],
-    hasWater: false,
-    waterStyle: 'none',
-    hasDeepRough: true
+    id: 'cape_shore',
+    name: 'Cape Shoreline',
+    parWeights: [0.15, 0.60, 0.25],
+    tag: 'Coastal Hazard Sweep',
+    desc: 'A sweeping dogleg wrapping around a perilous water shoreline and beach sand.'
   },
   {
-    name: 'Coastal Bay',
-    features: ['Lateral Ocean Water', 'Coastal Dunes', 'Crown Green'],
-    hasWater: true,
-    waterStyle: 'lake',
-    hasDeepRough: true
+    id: 'dune_corridor',
+    name: 'Pot Bunker Minefield',
+    parWeights: [0.35, 0.45, 0.20],
+    tag: 'Deep Rough & Pot Traps',
+    desc: 'Narrow fairway corridor flanked by thick dunes, punishing pot bunkers, and steep slopes.'
+  },
+  {
+    id: 'woodland_dogleg',
+    name: 'Pencil Pine Dogleg',
+    parWeights: [0.0, 0.75, 0.25],
+    tag: 'Tree Chokepoints',
+    desc: 'Dense tree stands protect the corner, rewarding shaping or disciplined placement.'
   }
 ];
 
@@ -86,187 +104,320 @@ export function formatSeedDateDisplay(seedStr) {
   return `Seed #${seedStr}`;
 }
 
+// Distance helper
+function hexDist(q1, r1, q2, r2) {
+  return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2;
+}
+
 export function generateDailyHole(seed = getTodaySeedString()) {
   const rand = createPrng(String(seed));
 
-  // 1. Determine Par & Target Distance
+  // 1. Pick Archetype
+  const archIndex = Math.floor(rand() * ARCHETYPES.length);
+  const arch = ARCHETYPES[archIndex];
+
+  // 2. Determine Par & Target Distance
   const parRoll = rand();
   let par = 4;
-  let targetDist = 16;
-  if (parRoll < 0.28) {
+  if (parRoll < arch.parWeights[0]) {
     par = 3;
-    targetDist = 10 + Math.floor(rand() * 4); // 10 to 13 hexes
-  } else if (parRoll < 0.78) {
+  } else if (parRoll < arch.parWeights[0] + arch.parWeights[1]) {
     par = 4;
-    targetDist = 15 + Math.floor(rand() * 4); // 15 to 18 hexes
   } else {
     par = 5;
-    targetDist = 20 + Math.floor(rand() * 4); // 20 to 23 hexes
   }
 
-  // 2. Select Theme & Name
-  const themeIndex = Math.floor(rand() * THEME_TYPES.length);
-  const theme = THEME_TYPES[themeIndex];
+  let targetDist = 16;
+  if (par === 3) targetDist = 10 + Math.floor(rand() * 4); // 10-13
+  else if (par === 4) targetDist = 15 + Math.floor(rand() * 4); // 15-18
+  else targetDist = 20 + Math.floor(rand() * 4); // 20-23
+
+  // 3. Name Generation
   const pfx = NAME_PREFIXES[Math.floor(rand() * NAME_PREFIXES.length)];
   const sfx = NAME_SUFFIXES[Math.floor(rand() * NAME_SUFFIXES.length)];
   const holeName = `${pfx} ${sfx}`;
 
-  // 3. Shape & Dogleg offset
-  const shapeType = Math.floor(rand() * 4); // 0: Straight, 1: Dogleg Left, 2: Dogleg Right, 3: S-Curve
+  // Grid bounds: q in [-6, 6], r in [-23, 1]
+  const pinR = -targetDist;
   let pinQ = 0;
   let midQ = 0;
-  if (shapeType === 1) { // Left
-    pinQ = -2 - Math.floor(rand() * 2);
-    midQ = -1 - Math.floor(rand() * 2);
-  } else if (shapeType === 2) { // Right
-    pinQ = 2 + Math.floor(rand() * 2);
-    midQ = 1 + Math.floor(rand() * 2);
-  } else if (shapeType === 3) { // S-curve
-    midQ = (rand() > 0.5 ? 2 : -2);
-    pinQ = -midQ;
-  } else { // Straight with slight variance
-    pinQ = Math.floor((rand() - 0.5) * 3);
-    midQ = Math.floor((rand() - 0.5) * 2);
+  const doglegDir = rand() > 0.5 ? 1 : -1; // 1: Right, -1: Left
+
+  if (par === 3) {
+    pinQ = Math.floor((rand() - 0.5) * 4);
+    midQ = Math.round(pinQ * 0.5);
+  } else {
+    pinQ = doglegDir * (2 + Math.floor(rand() * 2));
+    midQ = doglegDir * (1 + Math.floor(rand() * 3));
   }
 
-  const pinR = -targetDist;
-  const layout = {};
+  // Working sets for coordinate groups
+  const coordsByType = {
+    tee: new Set(),
+    hole: new Set(),
+    green: new Set(),
+    fairway: new Set(),
+    deep_rough: new Set(),
+    sand: new Set(),
+    water: new Set(),
+    trees: new Set()
+  };
   const slopeArrows = {};
 
-  // 4. Tee Placement
-  layout["0,0"] = "tee";
-  layout["0,-1"] = "tee";
-  layout["-1,0"] = "tee";
-
-  // 5. Fairway Path generation
-  const midR = Math.round(pinR * 0.55);
-  for (let r = -1; r >= pinR + 1; r--) {
-    let qCenter = 0;
-    if (r >= midR) {
-      const t = (-r) / (-midR);
-      qCenter = Math.round(t * midQ);
-    } else {
-      const t = (midR - r) / (midR - pinR);
-      qCenter = Math.round(midQ + t * (pinQ - midQ));
+  function setTile(type, q, r) {
+    if (q < -6 || q > 6 || r < -23 || r > 2) return;
+    const k = `${q},${r}`;
+    // Remove from other sets if overwriting
+    for (const t of Object.keys(coordsByType)) {
+      coordsByType[t].delete(k);
     }
-
-    // Fairway width
-    const halfWidth = (r <= pinR + 2 || r >= -2) ? 1 : (rand() > 0.35 ? 1 : 2);
-    for (let dq = -halfWidth; dq <= halfWidth; dq++) {
-      const fq = qCenter + dq;
-      if (fq >= -5 && fq <= 5) {
-        layout[`${fq},${r}`] = "fairway";
-      }
-    }
-
-    // Optional deep rough fringes
-    if (theme.hasDeepRough) {
-      if (rand() > 0.5) {
-        const roughQ1 = qCenter - halfWidth - 1;
-        const roughQ2 = qCenter + halfWidth + 1;
-        if (roughQ1 >= -6) layout[`${roughQ1},${r}`] = "deep_rough";
-        if (roughQ2 <= 6) layout[`${roughQ2},${r}`] = "deep_rough";
-      }
-    }
+    coordsByType[type].add(k);
   }
 
-  // 6. Green Complex
+  function getTile(q, r) {
+    const k = `${q},${r}`;
+    for (const [t, set] of Object.entries(coordsByType)) {
+      if (set.has(k)) return t;
+    }
+    return null;
+  }
+
+  // --- TEE BOX ---
+  setTile('tee', 0, 0);
+  setTile('tee', 0, -1);
+  setTile('tee', -1, 0);
+
+  // --- GREEN COMPLEX ---
+  // Varied green shapes (oval, round, or elongated)
   for (let dq = -2; dq <= 2; dq++) {
     for (let dr = -2; dr <= 2; dr++) {
       const gq = pinQ + dq;
       const gr = pinR + dr;
-      const dist = (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
-      if (dist <= 1) {
-        layout[`${gq},${gr}`] = "green";
-      } else if (dist === 2 && rand() > 0.4) {
-        layout[`${gq},${gr}`] = "green";
+      const d = hexDist(pinQ, pinR, gq, gr);
+      if (d === 0) continue; // hole will be placed here
+      if (d === 1) {
+        setTile('green', gq, gr);
+      } else if (d === 2 && rand() > 0.35) {
+        setTile('green', gq, gr);
       }
     }
   }
-  // Pin / Hole
-  layout[`${pinQ},${pinR}`] = "hole";
+  setTile('hole', pinQ, pinR);
 
-  // 7. Green-side Bunkers
-  const bunkerSides = [
+  // Green apron (fairway fringe in front of green)
+  for (let dq = -1; dq <= 1; dq++) {
+    const aq = pinQ + dq;
+    const ar = pinR + 2;
+    if (!getTile(aq, ar)) setTile('fairway', aq, ar);
+  }
+
+  // --- ARCHETYPE SPECIFIC TERRAIN ---
+  const midR = Math.round(pinR * 0.55);
+
+  if (arch.id === 'split_fairway' && par >= 4) {
+    // Left Fairway (Aggressive short line with water/bunkers)
+    // Right Fairway (Safe route)
+    for (let r = -2; r >= pinR + 2; r--) {
+      const t = (r) / (pinR);
+      const leftQ = Math.round(-2.5 + t * (pinQ - (-2.5)));
+      const rightQ = Math.round(2.5 + t * (pinQ - 2.5));
+
+      setTile('fairway', leftQ, r);
+      if (leftQ - 1 >= -5) setTile('fairway', leftQ - 1, r);
+
+      setTile('fairway', rightQ, r);
+      if (rightQ + 1 <= 5) setTile('fairway', rightQ + 1, r);
+
+      // Central divider hazard between fairways
+      if (r >= midR - 2 && r <= midR + 3) {
+        setTile(rand() > 0.4 ? 'water' : 'sand', 0, r);
+        if (rand() > 0.5) setTile('trees', 0, r);
+      }
+    }
+    // Cross carry sand trap guarding the aggressive left route
+    setTile('sand', -2, midR + 2);
+    setTile('sand', -3, midR + 2);
+
+  } else if (arch.id === 'island_green') {
+    // Fairway up to the water edge
+    const waterStartR = pinR + 3;
+    for (let r = -2; r > waterStartR; r--) {
+      const t = (r) / (waterStartR);
+      const qC = Math.round(t * midQ);
+      setTile('fairway', qC, r);
+      if (qC - 1 >= -4) setTile('fairway', qC - 1, r);
+      if (qC + 1 <= 4) setTile('fairway', qC + 1, r);
+    }
+
+    // Moat water hazard around green
+    for (let dq = -4; dq <= 4; dq++) {
+      for (let dr = -3; dr <= 3; dr++) {
+        const wq = pinQ + dq;
+        const wr = pinR + dr;
+        const d = hexDist(pinQ, pinR, wq, wr);
+        if (d >= 2 && d <= 3 && !getTile(wq, wr)) {
+          setTile('water', wq, wr);
+        }
+      }
+    }
+
+    // Bailout sand/apron on one side
+    const bailoutQ = pinQ + (doglegDir * 3);
+    setTile('sand', bailoutQ, pinR);
+    setTile('sand', bailoutQ, pinR + 1);
+
+  } else if (arch.id === 'cross_creek' && par >= 4) {
+    // Fairway with a lateral creek across at drive distance
+    const creekR = Math.round(pinR * 0.45); // e.g. -7 or -8
+    for (let r = -2; r >= pinR + 2; r--) {
+      const t = (r) / (pinR);
+      const qC = Math.round(t * midQ);
+
+      if (r === creekR || r === creekR - 1) {
+        // Creek row
+        for (let cq = -5; cq <= 5; cq++) {
+          if (cq === qC && r === creekR && rand() > 0.6) {
+            // Narrow bridge or fairway stepping stone
+            setTile('fairway', cq, r);
+          } else {
+            setTile('water', cq, r);
+          }
+        }
+      } else {
+        setTile('fairway', qC, r);
+        if (qC - 1 >= -4) setTile('fairway', qC - 1, r);
+        if (qC + 1 <= 4) setTile('fairway', qC + 1, r);
+      }
+    }
+    // Trees guarding creek banks
+    setTile('trees', -4, creekR + 1);
+    setTile('trees', 4, creekR + 1);
+
+  } else if (arch.id === 'cape_shore') {
+    // Sweeping shoreline along one side
+    const waterSide = doglegDir;
+    for (let r = -2; r >= pinR + 2; r--) {
+      const t = (r) / (pinR);
+      const qC = Math.round(t * midQ);
+
+      setTile('fairway', qC, r);
+      setTile('fairway', qC - waterSide, r);
+
+      // Sand beach buffer
+      const sandQ = qC + waterSide;
+      setTile('sand', sandQ, r);
+
+      // Water body beyond sand beach
+      const w1 = sandQ + waterSide;
+      const w2 = w1 + waterSide;
+      setTile('water', w1, r);
+      setTile('water', w2, r);
+    }
+
+  } else if (arch.id === 'dune_corridor') {
+    // Narrow links fairway with deep rough and pot bunkers
+    for (let r = -2; r >= pinR + 2; r--) {
+      const t = (r) / (pinR);
+      const qC = Math.round(t * midQ);
+
+      setTile('fairway', qC, r);
+      if (rand() > 0.35) setTile('fairway', qC + (rand() > 0.5 ? 1 : -1), r);
+
+      // Flanking deep rough
+      setTile('deep_rough', qC - 2, r);
+      setTile('deep_rough', qC + 2, r);
+      if (rand() > 0.5) setTile('deep_rough', qC - 3, r);
+      if (rand() > 0.5) setTile('deep_rough', qC + 3, r);
+
+      // Pot bunkers at key roll-out distances
+      if (r === Math.round(pinR * 0.4) || r === Math.round(pinR * 0.75)) {
+        setTile('sand', qC + (rand() > 0.5 ? 1 : -1), r);
+      }
+    }
+
+  } else {
+    // Woodland dogleg
+    for (let r = -2; r >= pinR + 2; r--) {
+      const t = (r) / (pinR);
+      const qC = Math.round(t * midQ);
+
+      setTile('fairway', qC, r);
+      if (qC - 1 >= -4) setTile('fairway', qC - 1, r);
+      if (qC + 1 <= 4) setTile('fairway', qC + 1, r);
+    }
+
+    // Dense tree stands on the inner dogleg elbow
+    const innerSide = -doglegDir;
+    for (let tr = midR - 2; tr <= midR + 2; tr++) {
+      setTile('trees', midQ + (innerSide * 2), tr);
+      setTile('trees', midQ + (innerSide * 3), tr);
+    }
+  }
+
+  // --- GREEN-SIDE BUNKER COMPLEX ---
+  const bunkerOffsetCandidates = [
     { q: pinQ - 2, r: pinR },
     { q: pinQ + 2, r: pinR },
     { q: pinQ, r: pinR + 2 },
     { q: pinQ - 1, r: pinR - 2 },
     { q: pinQ + 1, r: pinR - 2 }
   ];
-  const numGreenBunkers = 1 + Math.floor(rand() * 2);
-  for (let b = 0; b < numGreenBunkers; b++) {
-    const spot = bunkerSides[b % bunkerSides.length];
-    if (spot.q >= -6 && spot.q <= 6 && spot.r >= -23) {
-      if (layout[`${spot.q},${spot.r}`] !== 'hole') {
-        layout[`${spot.q},${spot.r}`] = "sand";
+  const numGreenTraps = 1 + Math.floor(rand() * 2);
+  for (let b = 0; b < numGreenTraps; b++) {
+    const spot = bunkerOffsetCandidates[(b + Math.floor(rand() * 3)) % bunkerOffsetCandidates.length];
+    if (spot.q >= -5 && spot.q <= 5 && spot.r >= -23) {
+      if (getTile(spot.q, spot.r) !== 'hole' && getTile(spot.q, spot.r) !== 'water') {
+        setTile('sand', spot.q, spot.r);
       }
     }
   }
 
-  // 8. Fairway Bunkers
-  if (par >= 4) {
-    const driveZoneR = -7 - Math.floor(rand() * 3);
-    const side = rand() > 0.5 ? 2 : -2;
-    layout[`${midQ + side},${driveZoneR}`] = "sand";
-    if (rand() > 0.5) layout[`${midQ + side},${driveZoneR - 1}`] = "sand";
+  // --- TOP/BOTTOM NATURAL TREE BORDERS ---
+  for (let bq = -6; bq <= 6; bq++) {
+    if (rand() > 0.6 && !getTile(bq, pinR - 2)) setTile('trees', bq, pinR - 2);
+    if (rand() > 0.7 && !getTile(bq, pinR - 3)) setTile('trees', bq, pinR - 3);
   }
 
-  // 9. Water Hazards
-  if (theme.hasWater) {
-    if (theme.waterStyle === 'island') {
-      // Moat around green except for entrance
-      for (let dq = -3; dq <= 3; dq++) {
-        for (let dr = -3; dr <= 3; dr++) {
-          const wq = pinQ + dq;
-          const wr = pinR + dr;
-          const dist = (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
-          if (dist === 2 || dist === 3) {
-            // Keep an entrance at the front
-            if (!(dq === 0 && dr >= 1) && !layout[`${wq},${wr}`]) {
-              if (wq >= -6 && wq <= 6 && wr >= -23) {
-                layout[`${wq},${wr}`] = "water";
-              }
-            }
-          }
-        }
-      }
-    } else {
-      // Lake on one side of fairway
-      const lakeSide = rand() > 0.5 ? 1 : -1;
-      const lakeCenterR = midR;
-      const lakeCenterQ = midQ + (lakeSide * 3);
-      for (let lq = -2; lq <= 2; lq++) {
-        for (let lr = -2; lr <= 2; lr++) {
-          const wq = lakeCenterQ + lq;
-          const wr = lakeCenterR + lr;
-          if (wq >= -6 && wq <= 6 && wr >= -23 && !layout[`${wq},${wr}`]) {
-            if ((lq * lq + lr * lr) <= 3) {
-              layout[`${wq},${wr}`] = "water";
-            }
-          }
-        }
-      }
+  // --- DYNAMIC SLOPE CONTOURS ---
+  // Slopes on greens & false fronts
+  const slopeDirs = [
+    { dir: 3, dq: 0, dr: 1 },  // S (down towards front)
+    { dir: 4, dq: -1, dr: 1 }, // SW
+    { dir: 2, dq: 1, dr: 0 },  // SE
+    { dir: 0, dq: 0, dr: -1 }, // N
+    { dir: 1, dq: 1, dr: -1 }, // NE
+    { dir: 5, dq: -1, dr: 0 }  // NW
+  ];
+
+  const slopesToCreate = 2 + Math.floor(rand() * 2);
+  for (let s = 0; s < slopesToCreate; s++) {
+    const candidate = slopeDirs[Math.floor(rand() * slopeDirs.length)];
+    const sq = pinQ + candidate.dq;
+    const sr = pinR + candidate.dr;
+    const tile = getTile(sq, sr);
+    if (tile === 'green' || tile === 'fairway') {
+      slopeArrows[`${sq},${sr}`] = candidate.dir;
     }
   }
 
-  // 10. Slope Contours
-  if (rand() > 0.25) {
-    // 1-3 slope arrows near the green or dogleg
-    const slopeSpots = [
-      { q: pinQ + 1, r: pinR - 1, dir: 1 }, // NE
-      { q: pinQ - 1, r: pinR, dir: 4 },     // SW
-      { q: pinQ, r: pinR - 2, dir: 0 },     // N
-      { q: pinQ, r: pinR + 1, dir: 3 }      // S
-    ];
-    const numSlopes = 1 + Math.floor(rand() * 2);
-    for (let s = 0; s < numSlopes; s++) {
-      const sp = slopeSpots[s];
-      if (layout[`${sp.q},${sp.r}`] === 'green' || layout[`${sp.q},${sp.r}`] === 'fairway') {
-        slopeArrows[`${sp.q},${sp.r}`] = sp.dir;
-      }
+  // --- COMPILE COMPACT PARSECOORDS SPEC ---
+  const terrainOrder = ['tee', 'hole', 'green', 'fairway', 'deep_rough', 'sand', 'water', 'trees'];
+  const specObj = {};
+
+  for (const t of terrainOrder) {
+    const coordList = Array.from(coordsByType[t]);
+    if (coordList.length > 0) {
+      coordList.sort((a, b) => {
+        const [qa, ra] = a.split(',').map(Number);
+        const [qb, rb] = b.split(',').map(Number);
+        return ra !== rb ? ra - rb : qa - qb;
+      });
+      specObj[t] = coordList.join(' ');
     }
   }
+
+  // Evaluate final layout object using the new format parser
+  const finalLayout = parseCoords(specObj);
 
   const generatedHole = {
     id: 1,
@@ -275,7 +426,7 @@ export function generateDailyHole(seed = getTodaySeedString()) {
     tee: { q: 0, r: 0 },
     hole: { q: pinQ, r: pinR },
     slopeArrows: slopeArrows,
-    layout: layout
+    layout: finalLayout
   };
 
   const dateStr = formatSeedDateDisplay(seed);
@@ -283,14 +434,20 @@ export function generateDailyHole(seed = getTodaySeedString()) {
   return {
     id: 'daily',
     name: `Hole of the Day: ${holeName}`,
-    difficulty: `${theme.name} • Par ${par}`,
+    difficulty: `${arch.name} • Par ${par}`,
     badge: 'HOLE OF THE DAY',
     par: par,
     holesCount: 1,
-    description: `Today's featured procedural challenge (${dateStr}): A Par ${par} (${targetDist} hexes) set on ${theme.name}.`,
-    features: [`Par ${par} (${targetDist} Hexes)`, theme.name, ...theme.features.slice(0, 2)],
+    description: `Today's featured challenge (${dateStr}): A Par ${par} (${targetDist} hexes). ${arch.desc}`,
+    features: [
+      `Par ${par} (${targetDist} Hexes)`,
+      arch.tag,
+      Object.keys(slopeArrows).length > 0 ? 'Contoured Green' : 'Bunker Complex',
+      coordsByType.water.size > 0 ? 'Water Hazards' : 'Dune Fringes'
+    ],
     dateStr: dateStr,
     seed: seed,
+    archetype: arch.id,
     holes: [generatedHole]
   };
 }
