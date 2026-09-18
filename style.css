@@ -622,18 +622,17 @@ body {
   justify-content: space-between;
   align-items: center;
   background: #d6ccb8;
-  padding: 2px 5px;
+  padding: 2px 4px;
   border-bottom: 1px solid #1a1a1a;
+  min-height: 20px;
 }
 
-.minimap-title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.62rem;
-  font-weight: 800;
+.minimap-tag-label {
+  font-size: 0.55rem;
+  font-weight: 900;
   color: #1a1a1a;
-  white-space: nowrap;
+  letter-spacing: 0.5px;
+  padding-left: 2px;
 }
 
 .minimap-header-btn {
@@ -651,11 +650,207 @@ body {
   cursor: pointer;
   line-height: 1;
   padding: 0;
+  flex-shrink: 0;
   transition: background-color 0.1s ease;
 }
 
 .minimap-header-btn:hover {
   background: #e0e0e0;
+}
+
+/* ==========================================
+   HOLE KEY & COMPASS (BOTTOM RIGHT)
+   ========================================== */
+
+#hole-key-container {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.key-pill-btn {
+  display: none;
+  background: rgba(247, 243, 232, 0.95);
+  color: #1a1a1a;
+  border: 1.5px solid #1a1a1a;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 4px 8px;
+  cursor: pointer;
+  box-shadow: 1.5px 1.5px 0 #1a1a1a;
+  align-items: center;
+  gap: 4px;
+  transition: transform 0.08s ease, background-color 0.12s ease;
+}
+
+.key-pill-btn:hover {
+  background: #ffffff;
+}
+
+.key-pill-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0.5px 0.5px 0 #1a1a1a;
+}
+
+.key-expand-arrow {
+  font-size: 0.6rem;
+  color: #555555;
+}
+
+#hole-key-container.key-minimised #key-card {
+  display: none;
+}
+
+#hole-key-container.key-minimised .key-pill-btn {
+  display: flex;
+}
+
+#key-card {
+  display: flex;
+  flex-direction: column;
+  background: rgba(247, 243, 232, 0.96);
+  border: 1.5px solid #1a1a1a;
+  border-radius: 5px;
+  box-shadow: 2px 2px 0 #1a1a1a;
+  overflow: hidden;
+  width: 172px;
+  max-height: 250px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+#key-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #d6ccb8;
+  padding: 2px 5px;
+  border-bottom: 1px solid #1a1a1a;
+  min-height: 20px;
+}
+
+.key-title {
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  color: #1a1a1a;
+  padding-left: 2px;
+}
+
+.key-header-btn {
+  background: #ffffff;
+  color: #1a1a1a;
+  border: 1px solid #1a1a1a;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  width: 17px;
+  height: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background-color 0.1s ease;
+}
+
+.key-header-btn:hover {
+  background: #e0e0e0;
+}
+
+#key-body {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: 220px;
+  padding: 5px 6px;
+  gap: 6px;
+}
+
+.key-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.key-section-header {
+  font-size: 0.52rem;
+  font-weight: 900;
+  color: #666666;
+  letter-spacing: 0.4px;
+  border-bottom: 1px solid #dcd4c0;
+  padding-bottom: 1px;
+}
+
+.key-compass-box {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #fffdf8;
+  border: 1px solid #d4c8b2;
+  border-radius: 4px;
+  padding: 3px;
+}
+
+.compass-node rect {
+  transition: fill 0.1s ease;
+}
+
+.compass-node:hover rect {
+  fill: #e8f5e9;
+}
+
+.key-terrain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3.5px;
+}
+
+.key-terrain-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 0.58rem;
+  line-height: 1.25;
+  background: #fffdf8;
+  border: 1px solid #e5dcc7;
+  border-radius: 3px;
+  padding: 3px 4px;
+}
+
+.key-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid #1a1a1a;
+  flex-shrink: 0;
+  margin-top: 1.5px;
+}
+
+.key-item-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.key-item-name {
+  font-weight: 800;
+  color: #1a1a1a;
+  font-size: 0.58rem;
+}
+
+.key-item-mod {
+  font-size: 0.52rem;
+  color: #555555;
+  line-height: 1.2;
 }
 
 #minimap-canvas-holder {
@@ -964,12 +1159,12 @@ body {
 }
 
 #die-card-distance {
-  width: 86px;
-  flex-shrink: 0;
+  flex: 4;
+  min-width: 0;
 }
 
 #die-card-control {
-  flex: 1;
+  flex: 6;
   min-width: 0;
 }
 

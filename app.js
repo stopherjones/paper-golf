@@ -456,6 +456,7 @@ function loadHole(index) {
 
   syncAimUI(0);
   updateControlsState();
+  updateKeyDisplay();
   fitHole();
 }
 
@@ -1177,6 +1178,94 @@ function renderMinimap() {
   mmCtx.restore();
 }
 
+// ==========================================
+// COURSE KEY & TERRAIN MODIFIERS
+// ==========================================
+
+const TERRAIN_RULES = {
+  tee: { name: 'Tee Area', color: '#cddc39', modifier: 'Starting zone. Driver (+4 distance) allowed. Clean lie.' },
+  fairway: { name: 'Fairway', color: '#4caf50', modifier: 'Clean lie. +1 tile distance bonus for irons.' },
+  green: { name: 'Green', color: '#2e7d32', modifier: 'Putting surface. Putter only (1-3 tiles).' },
+  rough: { name: 'Rough', color: '#dcedc8', modifier: 'Tall grass lie. -1 tile distance. Short Iron/Putter only.' },
+  deep_rough: { name: 'Deep Rough', color: '#aed581', modifier: 'Heavy grass. -2 tile distance. Short Iron only.' },
+  sand: { name: 'Bunker / Sand', color: '#fbc02d', modifier: 'Sand trap. -1 to dice roll. Short Iron/Putter only.' },
+  water: { name: 'Water Hazard', color: '#0288d1', modifier: 'Penalty hazard (+1 stroke). Ball dropped on nearest land.' },
+  trees: { name: 'Trees / Woods', color: '#81c784', modifier: 'Out of bounds (+1 stroke). Ball dropped on nearest land.' },
+  hole: { name: 'Cup & Pin', color: '#1a1a1a', modifier: 'Target cup. Land here to complete the hole!' },
+  crazy_fairway: { name: 'Carpet Fairway', color: '#00897b', modifier: 'Mini-golf felt carpet. True roll, standard lie.' },
+  bumper: { name: 'Bumper Rail', color: '#e91e63', modifier: 'Rubber cushion rail. Ball ricochets & angles off.' },
+  windmill: { name: 'Windmill Gate', color: '#00c853', modifier: 'Spinning sails. Time your shot or bank shot around.' },
+  tube_in: { name: 'Warp Tube (In)', color: '#00b4d8', modifier: 'Pneumatic portal. Teleports ball to output tube.' },
+  tube_out: { name: 'Warp Tube (Out)', color: '#76ff03', modifier: 'Portal exit. Ball shoots forward with exit momentum.' },
+  ramp: { name: 'Speed Ramp', color: '#ffd600', modifier: 'Accelerator ramp. Launches ball with extra speed.' },
+  funnel: { name: 'Loop-de-Loop', color: '#7c4dff', modifier: 'Loop funnel. Requires high speed roll to traverse.' },
+  slope: { name: 'Slope Contour', color: '#80deea', modifier: 'Slope contour. Ball slides 1 tile in arrow direction.' }
+};
+
+let isKeyMinimised = false;
+
+export function toggleKey(minimise = null) {
+  const container = document.getElementById('hole-key-container');
+  if (!container) return;
+
+  if (typeof minimise === 'boolean') {
+    isKeyMinimised = minimise;
+  } else {
+    isKeyMinimised = !isKeyMinimised;
+  }
+
+  if (isKeyMinimised) {
+    container.classList.remove('key-expanded');
+    container.classList.add('key-minimised');
+  } else {
+    container.classList.remove('key-minimised');
+    container.classList.add('key-expanded');
+    updateKeyDisplay();
+  }
+}
+
+export function updateKeyDisplay() {
+  const list = document.getElementById('key-terrain-list');
+  if (!list || !currentHole) return;
+
+  const presentTerrains = new Set();
+  if (currentHole.layout) {
+    Object.values(currentHole.layout).forEach((t) => presentTerrains.add(t));
+  }
+  if (currentHole.slopeArrows && Object.keys(currentHole.slopeArrows).length > 0) {
+    presentTerrains.add('slope');
+  }
+
+  list.innerHTML = '';
+
+  const order = [
+    'tee', 'fairway', 'crazy_fairway', 'green', 'hole',
+    'rough', 'deep_rough', 'sand', 'water', 'trees',
+    'bumper', 'windmill', 'tube_in', 'tube_out', 'ramp', 'funnel', 'slope'
+  ];
+
+  order.forEach((type) => {
+    if (presentTerrains.has(type)) {
+      const info = TERRAIN_RULES[type] || {
+        name: type,
+        color: TERRAIN[type] ? TERRAIN[type].color : '#cccccc',
+        modifier: 'Special hole terrain'
+      };
+
+      const item = document.createElement('div');
+      item.className = 'key-terrain-item';
+      item.innerHTML = `
+        <span class="key-swatch" style="background-color: ${info.color};"></span>
+        <div class="key-item-content">
+          <span class="key-item-name">${info.name}</span>
+          <span class="key-item-mod">${info.modifier}</span>
+        </div>
+      `;
+      list.appendChild(item);
+    }
+  });
+}
+
 export function renderDieFace(elementId, value) {
   const el = typeof elementId === 'string' ? document.getElementById(elementId) : elementId;
   if (!el) return;
@@ -1269,6 +1358,66 @@ export function updateShotControlDisplay(dirRoll, scatDist, isPure = false) {
   subControl.innerHTML = `<span class="control-note">${note}</span> <span class="control-dist-tag">(${distLabel})</span>`;
 }
 
+export function getDistanceExplanation(club, distRoll, effectiveRoll, baseDistance, currentTerrain, isCrazyGolf = false, dieConfig = null) {
+  if (isCrazyGolf) {
+    if (dieConfig && dieConfig.isChaos) {
+      if (distRoll >= 18) return `d20: ${distRoll} (miracle) = distance ${baseDistance}`;
+      if (distRoll <= 3) return `d20: ${distRoll} (dud) = distance 1`;
+      return `${distRoll}÷2 = distance ${baseDistance}`;
+    }
+    if (baseDistance !== distRoll) {
+      return `${distRoll} = distance ${baseDistance}`;
+    }
+    return baseDistance === 1 ? '1 tile' : `${baseDistance} tiles`;
+  }
+
+  // Traditional Golf
+  if (club === 'driver') {
+    if (currentTerrain === 'sand') {
+      return `${distRoll}+4-1 = distance ${baseDistance}`;
+    }
+    return `${distRoll}+4 = distance ${baseDistance}`;
+  }
+
+  if (club === 'longIron') {
+    if (currentTerrain === 'fairway') {
+      return `${distRoll}+2+1 = distance ${baseDistance}`;
+    } else if (currentTerrain === 'sand') {
+      return `${distRoll}+2-1 = distance ${baseDistance}`;
+    } else if (currentTerrain === 'rough') {
+      return `${distRoll}+2-1 = distance ${baseDistance}`;
+    } else if (currentTerrain === 'deep_rough') {
+      return `${distRoll}+2-2 = distance ${baseDistance}`;
+    }
+    return `${distRoll}+2 = distance ${baseDistance}`;
+  }
+
+  if (club === 'shortIron') {
+    if (currentTerrain === 'fairway') {
+      return `${distRoll}+1 = distance ${baseDistance}`;
+    } else if (currentTerrain === 'rough') {
+      return `${distRoll}-1 = distance ${baseDistance}`;
+    } else if (currentTerrain === 'deep_rough') {
+      return `${distRoll}-2 = distance ${baseDistance}`;
+    } else if (currentTerrain === 'sand') {
+      return `${distRoll}-1 = distance ${baseDistance}`;
+    }
+    return baseDistance === 1 ? '1 tile' : `${baseDistance} tiles`;
+  }
+
+  if (club === 'putter') {
+    if (distRoll !== baseDistance) {
+      return `Roll ${distRoll} = distance ${baseDistance}`;
+    }
+    return baseDistance === 1 ? '1 tile' : `${baseDistance} tiles`;
+  }
+
+  if (baseDistance !== distRoll) {
+    return `${distRoll} = distance ${baseDistance}`;
+  }
+  return baseDistance === 1 ? '1 tile' : `${baseDistance} tiles`;
+}
+
 function animateDie(elementId, finalValue, duration = 400, maxSides = 6) {
   return new Promise((resolve) => {
     const el = typeof elementId === 'string' ? document.getElementById(elementId) : elementId;
@@ -1341,7 +1490,7 @@ async function executeShot() {
       }
     }
 
-    document.getElementById('sub-dist').innerText = `${dieConfig.name}: ${distRoll} (${baseDistance} tiles)`;
+    document.getElementById('sub-dist').innerText = getDistanceExplanation(null, distRoll, distRoll, baseDistance, null, true, dieConfig);
 
     // 2. Scatter Roll
     let scatDist = 0;
@@ -1589,11 +1738,7 @@ async function executeShot() {
     if (['deep_rough'].includes(currentTerrain)) baseDistance = Math.max(1, baseDistance - 2);
   }
 
-  if (currentTerrain === 'sand') {
-    document.getElementById('sub-dist').innerText = `${baseDistance} tiles (Sand -1: ${effectiveRoll})`;
-  } else {
-    document.getElementById('sub-dist').innerText = `${baseDistance} tiles`;
-  }
+  document.getElementById('sub-dist').innerText = getDistanceExplanation(club, distRoll, effectiveRoll, baseDistance, currentTerrain, false);
 
   // 2. Scatter Roll
   let scatDist = 0;
@@ -2138,6 +2283,25 @@ if (minimapRestoreBtn) {
     toggleMinimap(false);
   });
 }
+
+// Course Key UI Event Listeners
+const keyMinimiseBtn = document.getElementById('key-minimise-btn');
+if (keyMinimiseBtn) {
+  keyMinimiseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleKey(true);
+  });
+}
+
+const keyRestoreBtn = document.getElementById('key-restore-btn');
+if (keyRestoreBtn) {
+  keyRestoreBtn.addEventListener('click', () => {
+    toggleKey(false);
+  });
+}
+
+// Initial Key render
+updateKeyDisplay();
 
 const minimapCanvas = document.getElementById('minimap-canvas');
 if (minimapCanvas) {
