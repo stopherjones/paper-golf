@@ -44,27 +44,6 @@
           </div>
         </div>
 
-        <!-- Crazy Golf Course Card (Mini-Golf Prototype) -->
-        <div class="course-card course-card-crazy" id="card-crazy">
-          <div class="course-card-top">
-            <span class="badge badge-crazy">⚡ CRAZY GOLF • MINI-GOLF PROTOTYPE</span>
-            <span class="course-par-tag">PAR 4 • 1 HOLE</span>
-          </div>
-          <h2 class="course-name">Neon Windmill &amp; Warp Tubes</h2>
-          <p class="course-desc">
-            Single-hole crazy mini-golf prototype! Roll with a custom Dice Arsenal (Precision, Super-Bounce, Sticky Lead, Rubber Bumper, Chaos d20) across spinning windmill blades, warp tubes, turbo speed ramps, and bumper ricochet rails.
-          </p>
-          <div class="course-features">
-            <span class="feat-tag">Dice Arsenal</span>
-            <span class="feat-tag">Warp Tubes</span>
-            <span class="feat-tag">Spinning Windmill</span>
-            <span class="feat-tag">Speed Ramps</span>
-            <span class="feat-tag">Bumper Rails</span>
-            <span class="feat-tag">Loop-de-Loop</span>
-          </div>
-          <button class="btn-tee-off btn-crazy" id="start-crazy-btn" data-course="crazy">TEE OFF CRAZY GOLF →</button>
-        </div>
-
         <!-- Parkland Course Card -->
         <div class="course-card" id="card-parkland">
           <div class="course-card-top">
@@ -101,11 +80,35 @@
           </div>
           <button class="btn-tee-off btn-links" id="start-links-btn" data-course="links">TEE OFF LINKS →</button>
         </div>
+
+        <!-- Crazy Golf Course Card (Mini-Golf Prototype) -->
+        <div class="course-card course-card-crazy" id="card-crazy">
+          <div class="course-card-top">
+            <span class="badge badge-crazy">⚡ CRAZY GOLF • MINI-GOLF PROTOTYPE</span>
+            <span class="course-par-tag">PAR 4 • 1 HOLE</span>
+          </div>
+          <h2 class="course-name">Neon Windmill &amp; Warp Tubes</h2>
+          <p class="course-desc">
+            Single-hole crazy mini-golf prototype! Roll with a custom Dice Arsenal (Precision, Super-Bounce, Sticky Lead, Rubber Bumper, Chaos d20) across spinning windmill blades, warp tubes, turbo speed ramps, and bumper ricochet rails.
+          </p>
+          <div class="course-features">
+            <span class="feat-tag">Dice Arsenal</span>
+            <span class="feat-tag">Warp Tubes</span>
+            <span class="feat-tag">Spinning Windmill</span>
+            <span class="feat-tag">Speed Ramps</span>
+            <span class="feat-tag">Bumper Rails</span>
+            <span class="feat-tag">Loop-de-Loop</span>
+          </div>
+          <button class="btn-tee-off btn-crazy" id="start-crazy-btn" data-course="crazy">TEE OFF CRAZY GOLF →</button>
+        </div>
       </div>
 
       <!-- Quick Rules Drawer Toggle -->
       <footer id="landing-footer">
-        <button id="toggle-rules-btn" class="btn-secondary">📖 Rules &amp; Club Guide</button>
+        <div class="landing-footer-btns">
+          <button id="toggle-rules-btn" class="btn-secondary">📖 Rules &amp; Club Guide</button>
+          <a href="/editor" class="btn-secondary btn-editor-link" target="_blank">🛠️ Hole Editor ↗</a>
+        </div>
         <div id="rules-drawer" class="rules-collapsed">
           <div class="rules-content">
             <h4>HOW TO PLAY (TRADITIONAL):</h4>
