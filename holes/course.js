@@ -1,8 +1,21 @@
 import { parklandCourse } from './parkland.js';
 import { linksCourse } from './links.js';
 import { generateDailyHole, getTodaySeedString } from './dailyHole.js';
+import { crazyHole } from './crazyHole.js';
 
 export const COURSES = {
+  crazy: {
+    id: 'crazy',
+    name: 'Crazy Golf: Neon Windmill',
+    difficulty: 'Arcade / Trick-Shot',
+    badge: 'CRAZY GOLF',
+    par: 4,
+    holesCount: 1,
+    description: 'Wild single-hole mini-golf prototype! Custom Dice Arsenal, rotating windmill blades, warp tubes, speed ramps, and bumper ricochet rails.',
+    features: ['Dice Arsenal', 'Warp Tubes', 'Spinning Windmill', 'Speed Ramps', 'Bumper Rails', 'Loop-de-Loop'],
+    holes: [crazyHole],
+    isCrazyGolf: true
+  },
   parkland: {
     id: 'parkland',
     name: 'Meadow Wood Parkland',

@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Paper & Dice Golf</title>
+  <meta name="description" content="A turn-based paper and dice golf game on a hex grid featuring traditional courses and a Crazy Golf arcade mode with custom dice pools and interactive obstacles.">
+  <meta property="og:title" content="Paper & Dice Golf">
+  <meta property="og:description" content="A turn-based paper and dice golf game on a hex grid featuring traditional courses and a Crazy Golf arcade mode with custom dice pools and interactive obstacles.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -39,6 +42,27 @@
             <button class="btn-tee-off btn-daily" id="start-daily-btn" data-course="daily">TEE OFF DAILY HOLE →</button>
             <button type="button" class="btn-reroll" id="reroll-daily-btn" title="Roll a new random hole seed">🎲 New Hole</button>
           </div>
+        </div>
+
+        <!-- Crazy Golf Course Card (Mini-Golf Prototype) -->
+        <div class="course-card course-card-crazy" id="card-crazy">
+          <div class="course-card-top">
+            <span class="badge badge-crazy">⚡ CRAZY GOLF • MINI-GOLF PROTOTYPE</span>
+            <span class="course-par-tag">PAR 4 • 1 HOLE</span>
+          </div>
+          <h2 class="course-name">Neon Windmill &amp; Warp Tubes</h2>
+          <p class="course-desc">
+            Single-hole crazy mini-golf prototype! Roll with a custom Dice Arsenal (Precision, Super-Bounce, Sticky Lead, Rubber Bumper, Chaos d20) across spinning windmill blades, warp tubes, turbo speed ramps, and bumper ricochet rails.
+          </p>
+          <div class="course-features">
+            <span class="feat-tag">Dice Arsenal</span>
+            <span class="feat-tag">Warp Tubes</span>
+            <span class="feat-tag">Spinning Windmill</span>
+            <span class="feat-tag">Speed Ramps</span>
+            <span class="feat-tag">Bumper Rails</span>
+            <span class="feat-tag">Loop-de-Loop</span>
+          </div>
+          <button class="btn-tee-off btn-crazy" id="start-crazy-btn" data-course="crazy">TEE OFF CRAZY GOLF →</button>
         </div>
 
         <!-- Parkland Course Card -->
@@ -84,7 +108,7 @@
         <button id="toggle-rules-btn" class="btn-secondary">📖 Rules &amp; Club Guide</button>
         <div id="rules-drawer" class="rules-collapsed">
           <div class="rules-content">
-            <h4>HOW TO PLAY:</h4>
+            <h4>HOW TO PLAY (TRADITIONAL):</h4>
             <ul>
               <li><strong>Driver (1D6+4):</strong> Longest drive; scatter roll applied. Tee only.</li>
               <li><strong>Long Iron (1D6+2):</strong> Strong approach; minor scatter. Tee or fairway.</li>
@@ -95,6 +119,15 @@
               <li><strong>Gimme (+1):</strong> Ball adjacent to hole (1 hex) can be finished instantly.</li>
               <li><strong>Slope Arrows (↑):</strong> Slide the ball 1 hex in arrow direction upon landing.</li>
             </ul>
+            <h4 style="margin-top: 8px; color: #d81b60;">CRAZY GOLF (MINI-GOLF) MODE:</h4>
+            <ul>
+              <li><strong>Dice Arsenal:</strong> Select from Precision (d4), Standard (d6), Super-Bounce (d10), Sticky Lead (ignores slopes), Rubber Bumper (bank ricochets), or Chaos (d20).</li>
+              <li><strong>Spinning Windmill:</strong> Alternates OPEN &amp; BLOCKED each stroke! Time your roll to slip past the blades.</li>
+              <li><strong>Warp Tubes:</strong> Roll into the cyan portal (IN) to warp instantly out of the exit (OUT) with forward momentum.</li>
+              <li><strong>Speed Ramps:</strong> Catapults the ball +2 distance across water chasms onto the upper deck.</li>
+              <li><strong>Bumper Rails:</strong> Striking perimeter walls rebounds the ball safely instead of going out of bounds.</li>
+              <li><strong>Loop-de-Loop:</strong> Roll into the spiral funnel with speed to loop directly toward the cup.</li>
+            </ul>
           </div>
         </div>
       </footer>
@@ -102,75 +135,124 @@
 
     <!-- GAMEPLAY SCREEN -->
     <div id="game-screen" style="display: none;">
-      <nav id="game-nav">
-        <button id="back-to-courses-btn" class="btn-nav">← Courses</button>
-        <span id="current-course-badge" class="nav-course-name">Meadow Wood Parkland</span>
-        <button id="view-scorecard-btn" class="btn-nav">Scorecard 📋</button>
-      </nav>
+      <header id="game-header-area">
+        <nav id="game-nav">
+          <button id="back-to-courses-btn" class="btn-nav">← Courses</button>
+          <span id="current-course-badge" class="nav-course-name">Meadow Wood Parkland</span>
+          <button id="view-scorecard-btn" class="btn-nav">Scorecard 📋</button>
+        </nav>
 
-      <header id="scoreboard">
-        <div class="score-box"><span>HOLE</span><strong id="hole-number">1/9</strong></div>
-        <div class="score-box"><span>PAR</span><strong id="hole-par">4</strong></div>
-        <div class="score-box"><span>STROKES</span><strong id="stroke-count">0</strong></div>
-        <div class="score-box"><span>TOTAL</span><strong id="total-score-display">E</strong></div>
+        <div id="scoreboard">
+          <div class="score-box"><span>HOLE</span><strong id="hole-number">1/9</strong></div>
+          <div class="score-box"><span>PAR</span><strong id="hole-par">4</strong></div>
+          <div class="score-box"><span>STROKES</span><strong id="stroke-count">0</strong></div>
+          <div class="score-box"><span>TOTAL</span><strong id="total-score-display">E</strong></div>
+        </div>
+
+        <!-- Crazy Golf Active Obstacle & Dice Status Bar -->
+        <div id="crazy-status-bar" style="display: none;">
+          <span class="crazy-tag" id="windmill-status-pill">⚙️ Windmill: OPEN</span>
+          <span class="crazy-tag" id="active-perk-pill">🎯 Precision Die (0 Scatter)</span>
+        </div>
       </header>
 
-      <div id="canvas-wrapper">
-        <canvas id="golf-canvas" width="360" height="420"></canvas>
-        <div id="canvas-tap-overlay-hint">📍 Tap course to aim</div>
-      </div>
+      <main id="canvas-wrapper">
+        <canvas id="golf-canvas"></canvas>
 
-      <!-- Quick Directional Aim Pills -->
-      <div id="aim-pills-bar">
-        <div class="aim-pills-container" id="aim-pills-container">
-          <button type="button" class="aim-pill active" data-dir="0">N ↑</button>
-          <button type="button" class="aim-pill" data-dir="1">NE ↗</button>
-          <button type="button" class="aim-pill" data-dir="2">SE ↘</button>
-          <button type="button" class="aim-pill" data-dir="3">S ↓</button>
-          <button type="button" class="aim-pill" data-dir="4">SW ↙</button>
-          <button type="button" class="aim-pill" data-dir="5">NW ↖</button>
-        </div>
-      </div>
+        <!-- Hole Preview Minimap (Bottom Left) -->
+        <div id="hole-minimap-container" class="minimap-expanded">
+          <!-- Restore Button (Visible when minimised) -->
+          <button type="button" id="minimap-restore-btn" class="minimap-pill-btn" aria-label="Restore Hole Preview" title="Restore Hole Preview">
+            <span class="minimap-icon">🗺️</span> Preview <span class="minimap-expand-arrow">▲</span>
+          </button>
 
-      <div id="dice-tray">
-        <div class="die-card">
-          <span class="die-label">DISTANCE</span>
-          <div class="die" id="die-dist">-</div>
-          <span class="die-sub" id="sub-dist">0 tiles</span>
+          <!-- Expanded Minimap Window -->
+          <div id="minimap-card">
+            <div id="minimap-header">
+              <div class="minimap-title-wrap">
+                <span class="minimap-icon">⛳</span>
+                <span id="minimap-title">Hole Overview</span>
+              </div>
+              <button type="button" id="minimap-minimise-btn" class="minimap-header-btn" aria-label="Minimise Hole Preview" title="Minimise Preview">_</button>
+            </div>
+            <div id="minimap-canvas-holder">
+              <canvas id="minimap-canvas" width="106" height="126"></canvas>
+            </div>
+            <div id="minimap-footer">
+              <span class="minimap-hint">Tap to pan</span>
+            </div>
+          </div>
         </div>
-        <div class="die-card">
-          <span class="die-label">SCATTER DIR</span>
-          <div class="die" id="die-dir">-</div>
-          <span class="die-sub" id="sub-dir">None</span>
-        </div>
-        <div class="die-card">
-          <span class="die-label">SCATTER DIST</span>
-          <div class="die" id="die-scat">-</div>
-          <span class="die-sub" id="sub-scat">0 tiles</span>
-        </div>
-      </div>
 
-      <footer id="control-panel">
-        <div class="control-row">
-          <select id="club-select" aria-label="Select Club">
-            <option value="driver">Driver (1D6+4) — Tee only</option>
-            <option value="longIron">Long Iron (1D6+2) — Tee/Fairway</option>
-            <option value="shortIron">Short Iron (1D6)</option>
-            <option value="putter">Putter (1D6: 1-3)</option>
-          </select>
-          <select id="aim-select" aria-label="Select Aim Direction">
-            <option value="0">Aim: N (↑)</option>
-            <option value="1">Aim: NE (↗)</option>
-            <option value="2">Aim: SE (↘)</option>
-            <option value="3">Aim: S (↓)</option>
-            <option value="4">Aim: SW (↙)</option>
-            <option value="5">Aim: NW (↖)</option>
-          </select>
+        <div id="hole-nav-hud">
+          <div class="hud-group">
+            <button type="button" id="zoom-in-btn" class="hud-btn" aria-label="Zoom In" title="Zoom In">+</button>
+            <span id="zoom-level-indicator" class="hud-label">100%</span>
+            <button type="button" id="zoom-out-btn" class="hud-btn" aria-label="Zoom Out" title="Zoom Out">−</button>
+          </div>
+          <div class="hud-group">
+            <button type="button" id="center-ball-btn" class="hud-btn hud-btn-action" title="Center on Ball">🎯 Ball</button>
+            <button type="button" id="fit-hole-btn" class="hud-btn hud-btn-action" title="Fit Entire Hole">🔍 Fit</button>
+          </div>
         </div>
-        <button id="roll-btn">ROLL SHOT</button>
-        <button id="gimme-btn" style="display: none;">GIMME (+1)</button>
-        <button id="next-btn" style="display: none;">NEXT HOLE</button>
-        <div id="status-message">Select club &amp; direction or tap course, then roll.</div>
+        <div id="hole-scroll-hint">Drag map to scroll • Scroll/pinch to zoom</div>
+      </main>
+
+      <footer id="game-footer-area">
+        <!-- Quick Directional Aim Pills -->
+        <div id="aim-pills-bar">
+          <div class="aim-pills-container" id="aim-pills-container">
+            <button type="button" class="aim-pill" data-dir="5">NW ↖</button>
+            <button type="button" class="aim-pill active" data-dir="0">N ↑</button>
+            <button type="button" class="aim-pill" data-dir="1">NE ↗</button>
+            <button type="button" class="aim-pill" data-dir="2">SE ↘</button>
+            <button type="button" class="aim-pill" data-dir="3">S ↓</button>
+            <button type="button" class="aim-pill" data-dir="4">SW ↙</button>
+          </div>
+        </div>
+
+        <!-- Club Selection Boxes (Directly below direction boxes) -->
+        <div id="club-pills-bar">
+          <div class="club-pills-container" id="club-pills-container">
+            <!-- Dynamically populated & updated by updateClubOptions() -->
+          </div>
+        </div>
+
+        <!-- Action Buttons (Directly below club selection boxes) -->
+        <div id="action-bar">
+          <button type="button" id="roll-btn">ROLL SHOT</button>
+          <button type="button" id="gimme-btn" style="display: none;">GIMME (+1)</button>
+          <button type="button" id="next-btn" style="display: none;">NEXT HOLE</button>
+        </div>
+
+        <!-- Combined Distance & Shot Control Dice Tray -->
+        <div id="dice-tray">
+          <div class="die-card" id="die-card-distance">
+            <span class="die-label">DISTANCE</span>
+            <div class="die die-empty" id="die-dist">-</div>
+            <span class="die-sub" id="sub-dist">0 tiles</span>
+          </div>
+
+          <div class="die-card" id="die-card-control">
+            <span class="die-label">SHOT CONTROL</span>
+            <div class="shot-control-dice">
+              <div class="die-pair-col">
+                <div class="die die-empty" id="die-dir">-</div>
+                <span class="die-pair-tag">DIR</span>
+              </div>
+              <div class="die-pair-col">
+                <div class="die die-empty" id="die-scat">-</div>
+                <span class="die-pair-tag">DIST</span>
+              </div>
+            </div>
+            <span class="die-sub" id="sub-control">On target (no scatter)</span>
+          </div>
+        </div>
+
+        <!-- Status Message (Shot feedback only, no hole info duplication) -->
+        <div id="status-bar-wrapper">
+          <div id="status-message">Select direction &amp; club, then roll.</div>
+        </div>
       </footer>
     </div>
 
