@@ -388,6 +388,12 @@ function updateControlsState() {
   const gimmeBtn = document.getElementById('gimme-btn');
   const nextBtn = document.getElementById('next-btn');
 
+  if (isShotAnimating) {
+    if (rollBtn) rollBtn.disabled = true;
+    if (gimmeBtn) gimmeBtn.disabled = true;
+    return;
+  }
+
   const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
   if (finalTerrain === 'hole') {
     rollBtn.style.display = 'none';
@@ -472,6 +478,13 @@ function loadHole(index) {
   playerPos = { ...currentHole.tee };
   strokeCount = 0;
   shotTrails = [];
+
+  isShotAnimating = false;
+  activeShotAnimation = null;
+  activeBallDrop = null;
+  activeSlopeSlide = null;
+  activeCupSink = null;
+  activeImpactRipple = null;
 
   if (currentHole.isCrazyGolf) {
     windmillOpen = true;
@@ -591,6 +604,292 @@ function drawHex(x, y, type, arrow = null) {
   }
 }
 
+// ==========================================
+// SHOT FLIGHT ANIMATION & CURVE SYSTEM
+// ==========================================
+
+let isShotAnimating = false;
+let activeShotAnimation = null;
+let activeBallDrop = null;
+let activeSlopeSlide = null;
+let activeCupSink = null;
+let activeImpactRipple = null;
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function lerpPoint(p1, p2, t) {
+  return { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t };
+}
+
+function getCubicBezierPoint(p0, p1, p2, p3, t) {
+  const p01 = lerpPoint(p0, p1, t);
+  const p12 = lerpPoint(p1, p2, t);
+  const p23 = lerpPoint(p2, p3, t);
+  const p012 = lerpPoint(p01, p12, t);
+  const p123 = lerpPoint(p12, p23, t);
+  const pt = lerpPoint(p012, p123, t);
+  return { pt, p01, p012 };
+}
+
+function drawArrowHead(tipX, tipY, angle, color, len = 7) {
+  const arrowAngle = Math.PI / 6;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(tipX - len * Math.cos(angle - arrowAngle), tipY - len * Math.sin(angle - arrowAngle));
+  ctx.lineTo(tipX - len * Math.cos(angle + arrowAngle), tipY - len * Math.sin(angle + arrowAngle));
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
+function buildShotCurve(pStart, pAimed, pLanding, hasScatter) {
+  const P0 = pStart;
+  const P3 = pLanding;
+  const isCurved = hasScatter && (Math.abs(pAimed.x - pLanding.x) > 1 || Math.abs(pAimed.y - pLanding.y) > 1);
+  if (!isCurved) {
+    return {
+      p0: P0,
+      p1: { x: P0.x + (P3.x - P0.x) * 0.333, y: P0.y + (P3.y - P0.y) * 0.333 },
+      p2: { x: P0.x + (P3.x - P0.x) * 0.667, y: P0.y + (P3.y - P0.y) * 0.667 },
+      p3: P3,
+      isCurved: false
+    };
+  }
+
+  // Shot with scatter: starts quite straight along aim line, then curls towards landing
+  // P1 continues straight along the aim vector so the shot launches in the chosen direction
+  const P1 = {
+    x: P0.x + (pAimed.x - P0.x) * 0.55,
+    y: P0.y + (pAimed.y - P0.y) * 0.55
+  };
+  // P2 bends gently towards the landing point for a smooth aerodynamic curl
+  const P2 = {
+    x: pAimed.x + (P3.x - pAimed.x) * 0.45,
+    y: pAimed.y + (P3.y - pAimed.y) * 0.45
+  };
+
+  return {
+    p0: P0,
+    p1: P1,
+    p2: P2,
+    p3: P3,
+    isCurved: true
+  };
+}
+
+function animateShotFlight(curve, club, distanceTiles, aimedPx = null) {
+  return new Promise((resolve) => {
+    const isPutter = club === 'putter';
+    const distPx = Math.hypot(curve.p3.x - curve.p0.x, curve.p3.y - curve.p0.y);
+    const maxLift = isPutter ? 0 : Math.min(28, Math.max(8, distPx * 0.14));
+    const duration = Math.min(950, Math.max(460, distanceTiles * 70 + 260));
+
+    const startTime = performance.now();
+    activeShotAnimation = {
+      curve,
+      club,
+      aimedPx,
+      progress: 0,
+      ballPos: curve.p0,
+      altitude: 0,
+      maxLift,
+      subPoints: null
+    };
+
+    function step(now) {
+      const elapsed = now - startTime;
+      const rawT = Math.min(1, elapsed / duration);
+      // Ease-out quadratic for aerodynamic flight deceleration into the landing
+      const t = rawT * (2 - rawT);
+
+      const { pt, p01, p012 } = getCubicBezierPoint(curve.p0, curve.p1, curve.p2, curve.p3, t);
+      const altitude = isPutter ? 0 : Math.sin(t * Math.PI);
+
+      activeShotAnimation.progress = t;
+      activeShotAnimation.ballPos = pt;
+      activeShotAnimation.altitude = altitude;
+      activeShotAnimation.subPoints = { p01, p012, pt };
+
+      // Soft camera tracking if ball approaches viewport boundaries
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const cssW = canvas.width / dpr;
+      const cssH = canvas.height / dpr;
+      const screenX = pt.x * camera.scale + camera.panX;
+      const screenY = pt.y * camera.scale + camera.panY;
+      const margin = 48;
+      if (screenX < margin || screenX > cssW - margin || screenY < margin || screenY > cssH - margin) {
+        camera.panX += (cssW / 2 - pt.x * camera.scale - camera.panX) * 0.08;
+        camera.panY += (cssH / 2 - pt.y * camera.scale - camera.panY) * 0.08;
+        clampCamera();
+      }
+
+      render();
+
+      if (rawT < 1) {
+        requestAnimationFrame(step);
+      } else {
+        // Touchdown landing impact
+        activeShotAnimation.progress = 1;
+        activeShotAnimation.altitude = 0;
+        activeShotAnimation.ballPos = curve.p3;
+        activeShotAnimation.subPoints = null;
+
+        animateTouchdownRipple(curve.p3).then(() => {
+          activeShotAnimation = null;
+          resolve();
+        });
+      }
+    }
+
+    requestAnimationFrame(step);
+  });
+}
+
+function animateTouchdownRipple(pos) {
+  return new Promise((resolve) => {
+    const duration = 160;
+    const start = performance.now();
+    activeImpactRipple = { x: pos.x, y: pos.y, progress: 0 };
+
+    function rip(now) {
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / duration);
+      activeImpactRipple.progress = t;
+      render();
+      if (t < 1) {
+        requestAnimationFrame(rip);
+      } else {
+        activeImpactRipple = null;
+        render();
+        resolve();
+      }
+    }
+    requestAnimationFrame(rip);
+  });
+}
+
+function animateBallDrop(fromPx, toPx) {
+  return new Promise((resolve) => {
+    const duration = 340;
+    const start = performance.now();
+    activeBallDrop = {
+      from: fromPx,
+      to: toPx,
+      pos: fromPx,
+      altitude: 0,
+      progress: 0
+    };
+
+    function dropStep(now) {
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / duration);
+      const ease = t * (2 - t);
+      const x = fromPx.x + (toPx.x - fromPx.x) * ease;
+      const y = fromPx.y + (toPx.y - fromPx.y) * ease;
+      const altitude = Math.sin(t * Math.PI);
+
+      activeBallDrop.pos = { x, y };
+      activeBallDrop.altitude = altitude;
+      activeBallDrop.progress = t;
+      render();
+
+      if (t < 1) {
+        requestAnimationFrame(dropStep);
+      } else {
+        activeBallDrop = null;
+        render();
+        resolve();
+      }
+    }
+    requestAnimationFrame(dropStep);
+  });
+}
+
+function animateSlopeSlide(fromPx, toPx) {
+  return new Promise((resolve) => {
+    const duration = 300;
+    const start = performance.now();
+    activeSlopeSlide = {
+      from: fromPx,
+      to: toPx,
+      pos: fromPx,
+      progress: 0
+    };
+
+    function slideStep(now) {
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / duration);
+      const ease = t * (2 - t);
+      const x = fromPx.x + (toPx.x - fromPx.x) * ease;
+      const y = fromPx.y + (toPx.y - fromPx.y) * ease;
+
+      activeSlopeSlide.pos = { x, y };
+      activeSlopeSlide.progress = t;
+      render();
+
+      if (t < 1) {
+        requestAnimationFrame(slideStep);
+      } else {
+        activeSlopeSlide = null;
+        render();
+        resolve();
+      }
+    }
+    requestAnimationFrame(slideStep);
+  });
+}
+
+function animateCupSink(cupPx) {
+  return new Promise((resolve) => {
+    const duration = 240;
+    const start = performance.now();
+    activeCupSink = { pos: cupPx, progress: 0 };
+
+    function sinkStep(now) {
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / duration);
+      activeCupSink.progress = t;
+      render();
+
+      if (t < 1) {
+        requestAnimationFrame(sinkStep);
+      } else {
+        activeCupSink = null;
+        render();
+        resolve();
+      }
+    }
+    requestAnimationFrame(sinkStep);
+  });
+}
+
+async function animateCrazyWaypoints(waypoints, dieConfig) {
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const wp1 = waypoints[i];
+    const wp2 = waypoints[i + 1];
+    const p1 = hexToPixel(wp1.q, wp1.r);
+    const p2 = hexToPixel(wp2.q, wp2.r);
+
+    if (wp2.isWarp) {
+      await animateCupSink(p1);
+      await new Promise(r => setTimeout(r, 80));
+      await animateTouchdownRipple(p2);
+    } else {
+      const dist = hexDistance(wp1, wp2);
+      const curve = buildShotCurve(p1, p2, p2, false);
+      const clubType = dieConfig.id === 'precision' ? 'putter' : 'shortIron';
+      await animateShotFlight(curve, clubType, Math.max(1, dist));
+      if (wp2.isRicochet) {
+        await animateTouchdownRipple(p2);
+      }
+    }
+  }
+}
+
 function drawTrailSegment(p1, p2, color, width, isDashed = false, showArrow = true) {
   if (p1.x === p2.x && p1.y === p2.y) return;
   ctx.save();
@@ -610,15 +909,7 @@ function drawTrailSegment(p1, p2, color, width, isDashed = false, showArrow = tr
 
   if (showArrow) {
     const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-    const arrowLen = 7;
-    const arrowAngle = Math.PI / 6;
-    ctx.beginPath();
-    ctx.moveTo(p2.x, p2.y);
-    ctx.lineTo(p2.x - arrowLen * Math.cos(angle - arrowAngle), p2.y - arrowLen * Math.sin(angle - arrowAngle));
-    ctx.lineTo(p2.x - arrowLen * Math.cos(angle + arrowAngle), p2.y - arrowLen * Math.sin(angle + arrowAngle));
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
+    drawArrowHead(p2.x, p2.y, angle, color, 7);
   }
   ctx.restore();
 }
@@ -692,15 +983,52 @@ function render() {
           ctx.fill();
         }
       }
+    } else if (trail.curve) {
+      // Draw smooth Bezier curve for shot flight (trend line)
+      ctx.beginPath();
+      ctx.moveTo(trail.curve.p0.x, trail.curve.p0.y);
+      ctx.bezierCurveTo(
+        trail.curve.p1.x, trail.curve.p1.y,
+        trail.curve.p2.x, trail.curve.p2.y,
+        trail.curve.p3.x, trail.curve.p3.y
+      );
+      ctx.strokeStyle = '#d32f2f';
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Touchdown direction arrowhead
+      const tanX = trail.curve.p3.x - trail.curve.p2.x;
+      const tanY = trail.curve.p3.y - trail.curve.p2.y;
+      const angle = Math.atan2(tanY, tanX);
+      drawArrowHead(trail.curve.p3.x, trail.curve.p3.y, angle, '#d32f2f', 7);
+
+      // If scatter occurred, subtle dashed aim guide to original aimed point
+      if (trail.hasScatter && trail.aimed) {
+        const pAim = hexToPixel(trail.aimed.q, trail.aimed.r);
+        ctx.save();
+        ctx.setLineDash([2, 3]);
+        ctx.strokeStyle = 'rgba(245, 124, 0, 0.45)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(trail.curve.p0.x, trail.curve.p0.y);
+        ctx.lineTo(pAim.x, pAim.y);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(pAim.x, pAim.y, 2, 0, 2 * Math.PI);
+        ctx.fillStyle = '#f57c00';
+        ctx.fill();
+        ctx.restore();
+      }
     } else {
-      // 2. Trajectory line for roll + modifiers (solid crimson line)
+      // Fallback: Trajectory line for roll + modifiers (solid crimson line)
       const hasScatterLine = trail.hasScatter && trail.scatter && (trail.scatter.q !== trail.aimed.q || trail.scatter.r !== trail.aimed.r);
       drawTrailSegment(pStart, pAimed, '#d32f2f', 2.4, false, !hasScatterLine);
 
-      // 3. Scatter line (dashed amber line)
+      // Scatter line (dashed amber line)
       if (hasScatterLine) {
         const pScatter = hexToPixel(trail.scatter.q, trail.scatter.r);
-        // Intermediate junction node at roll distance
         ctx.beginPath();
         ctx.arc(pAimed.x, pAimed.y, 2.5, 0, 2 * Math.PI);
         ctx.fillStyle = '#f57c00';
@@ -739,10 +1067,59 @@ function render() {
     ctx.restore();
   });
 
+  // Active shot flight trail (drawn in real-time behind the flying ball)
+  if (activeShotAnimation && activeShotAnimation.curve) {
+    const c = activeShotAnimation.curve;
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+
+    // Origin marker
+    ctx.beginPath();
+    ctx.arc(c.p0.x, c.p0.y, 3, 0, 2 * Math.PI);
+    ctx.fillStyle = '#b71c1c';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Growing Bezier trail
+    if (activeShotAnimation.subPoints) {
+      const { p01, p012, pt } = activeShotAnimation.subPoints;
+      ctx.beginPath();
+      ctx.moveTo(c.p0.x, c.p0.y);
+      ctx.bezierCurveTo(p01.x, p01.y, p012.x, p012.y, pt.x, pt.y);
+      ctx.strokeStyle = '#d32f2f';
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    // Subtle aim guide if curving with scatter
+    if (c.isCurved && activeShotAnimation.aimedPx) {
+      const pAim = activeShotAnimation.aimedPx;
+      ctx.save();
+      ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = 'rgba(245, 124, 0, 0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(c.p0.x, c.p0.y);
+      ctx.lineTo(pAim.x, pAim.y);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(pAim.x, pAim.y, 2, 0, 2 * Math.PI);
+      ctx.fillStyle = '#f57c00';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
   const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
 
-  // Aiming Line Preview & Range Indicators (only when hole is active)
-  if (finalTerrain !== 'hole') {
+  // Aiming Line Preview & Range Indicators (only when hole is active and ball is at rest)
+  if (finalTerrain !== 'hole' && !isShotAnimating) {
     const aimDir = getSelectedAimDir();
     const currentClub = getSelectedClub();
     const currentPosPx = hexToPixel(playerPos.q, playerPos.r);
@@ -793,15 +1170,101 @@ function render() {
     ctx.stroke();
   }
 
+  // Touchdown Impact Ripple
+  if (activeImpactRipple) {
+    const ripR = 4 + activeImpactRipple.progress * 13;
+    const alpha = (1 - activeImpactRipple.progress) * 0.7;
+    ctx.beginPath();
+    ctx.arc(activeImpactRipple.x, activeImpactRipple.y, ripR, 0, 2 * Math.PI);
+    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
   // Render Ball
-  const currentPosPx = hexToPixel(playerPos.q, playerPos.r);
-  ctx.beginPath();
-  ctx.arc(currentPosPx.x, currentPosPx.y, 4, 0, 2 * Math.PI);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
-  ctx.strokeStyle = '#1a1a1a';
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  if (activeShotAnimation) {
+    const alt = activeShotAnimation.altitude;
+    const lift = alt * activeShotAnimation.maxLift;
+    const bx = activeShotAnimation.ballPos.x;
+    const by = activeShotAnimation.ballPos.y;
+
+    // Ground Shadow beneath the ball
+    if (alt > 0) {
+      ctx.beginPath();
+      ctx.ellipse(bx + alt * 2.5, by + alt * 1.5, 4.2 + (1 - alt) * 0.6, 2.2 + (1 - alt) * 0.5, 0, 0, 2 * Math.PI);
+      ctx.fillStyle = `rgba(0, 0, 0, ${0.12 + (1 - alt) * 0.16})`;
+      ctx.fill();
+    }
+
+    // Flying Ball with altitude elevation and 3D specular highlight
+    const ballR = 4 + alt * 1.6;
+    ctx.beginPath();
+    ctx.arc(bx, by - lift, ballR, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    if (alt > 0.1) {
+      ctx.beginPath();
+      ctx.arc(bx - ballR * 0.25, by - lift - ballR * 0.25, ballR * 0.35, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fill();
+    }
+  } else if (activeBallDrop) {
+    const alt = activeBallDrop.altitude;
+    const lift = alt * 16;
+    const bx = activeBallDrop.pos.x;
+    const by = activeBallDrop.pos.y;
+
+    // Ground Shadow
+    ctx.beginPath();
+    ctx.ellipse(bx + alt * 2, by + alt * 1.2, 4, 2, 0, 0, 2 * Math.PI);
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.12 + (1 - alt) * 0.14})`;
+    ctx.fill();
+
+    // Hopping Ball
+    ctx.beginPath();
+    ctx.arc(bx, by - lift, 4 + alt * 1.2, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  } else if (activeSlopeSlide) {
+    const bx = activeSlopeSlide.pos.x;
+    const by = activeSlopeSlide.pos.y;
+    ctx.beginPath();
+    ctx.arc(bx, by, 4, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  } else if (activeCupSink) {
+    const p = activeCupSink.progress;
+    const r = Math.max(0, 4 * (1 - p));
+    if (r > 0.1) {
+      ctx.beginPath();
+      ctx.arc(activeCupSink.pos.x, activeCupSink.pos.y + p * 2, r, 0, 2 * Math.PI);
+      ctx.fillStyle = `rgba(255, 255, 255, ${1 - p * 0.7})`;
+      ctx.fill();
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  } else {
+    // Standard resting ball
+    const currentPosPx = hexToPixel(playerPos.q, playerPos.r);
+    ctx.beginPath();
+    ctx.arc(currentPosPx.x, currentPosPx.y, 4, 0, 2 * Math.PI);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
 
   ctx.restore();
 }
@@ -1168,14 +1631,17 @@ function recordHoleFinish() {
 }
 
 async function executeShot() {
+  if (isShotAnimating) return;
+  isShotAnimating = true;
+
   const club = getSelectedClub();
   const aimDir = getSelectedAimDir();
   const currentTerrain = getTerrainAt(playerPos.q, playerPos.r);
 
   const rollBtn = document.getElementById('roll-btn');
   const gimmeBtn = document.getElementById('gimme-btn');
-  rollBtn.disabled = true;
-  gimmeBtn.disabled = true;
+  if (rollBtn) rollBtn.disabled = true;
+  if (gimmeBtn) gimmeBtn.disabled = true;
 
   const shotStart = { q: playerPos.q, r: playerPos.r };
 
@@ -1399,6 +1865,21 @@ async function executeShot() {
     windmillOpen = !windmillOpen;
     updateCrazyStatusBar();
 
+    // Animate the shot through all waypoints
+    await animateCrazyWaypoints(waypoints, dieConfig);
+
+    if (hazardType && hazardPos && dropPos) {
+      document.getElementById('status-message').innerText = 'Water hazard! +1 penalty stroke. Ball dropping to nearest land...';
+      await animateBallDrop(hexToPixel(hazardPos.q, hazardPos.r), hexToPixel(dropPos.q, dropPos.r));
+    } else if (slopeFrom && slopeTo) {
+      await animateSlopeSlide(hexToPixel(slopeFrom.q, slopeFrom.r), hexToPixel(slopeTo.q, slopeTo.r));
+    }
+
+    const finalTerrainCheck = getTerrainAt(playerPos.q, playerPos.r);
+    if (finalTerrainCheck === 'hole') {
+      await animateCupSink(hexToPixel(playerPos.q, playerPos.r));
+    }
+
     shotTrails.push({
       stroke: strokeCount,
       club: club,
@@ -1415,6 +1896,7 @@ async function executeShot() {
       final: { ...playerPos }
     });
 
+    isShotAnimating = false;
     updateScoreboard();
     render();
     keepBallInView();
@@ -1506,6 +1988,14 @@ async function executeShot() {
   const landingHex = scatterPos ? { ...scatterPos } : { ...aimedPos };
   const landingTerrain = getTerrainAt(landingHex.q, landingHex.r);
 
+  const pStart = hexToPixel(shotStart.q, shotStart.r);
+  const pAimed = hexToPixel(aimedPos.q, aimedPos.r);
+  const pLanding = hexToPixel(landingHex.q, landingHex.r);
+  const curve = buildShotCurve(pStart, pAimed, pLanding, scatDist > 0);
+
+  // Animate the shot trajectory! Ball flies along the smooth trend line
+  await animateShotFlight(curve, club, baseDistance, pAimed);
+
   let hazardType = null;
   let hazardPos = null;
   let dropPos = null;
@@ -1521,6 +2011,12 @@ async function executeShot() {
     dropPos = { ...nearestLand };
     playerPos = { q: nearestLand.q, r: nearestLand.r };
 
+    const hazardName = landingTerrain === 'water' ? 'Water hazard' : 'Out of bounds in trees';
+    document.getElementById('status-message').innerText = `${hazardName}! +1 penalty stroke. Ball dropping to nearest land...`;
+
+    // Animate ball drop to nearest land
+    await animateBallDrop(pLanding, hexToPixel(dropPos.q, dropPos.r));
+
     const arrow = currentHole.slopeArrows[`${playerPos.q},${playerPos.r}`];
     if (arrow !== undefined) {
       const slideQ = playerPos.q + HEX_DIRS[arrow].q;
@@ -1530,6 +2026,7 @@ async function executeShot() {
         slopeTo = { q: slideQ, r: slideR };
         playerPos.q = slideQ;
         playerPos.r = slideR;
+        await animateSlopeSlide(hexToPixel(slopeFrom.q, slopeFrom.r), hexToPixel(slopeTo.q, slopeTo.r));
       }
     }
 
@@ -1540,6 +2037,7 @@ async function executeShot() {
       aimed: aimedPos,
       hasScatter: scatDist > 0,
       scatter: scatterPos,
+      curve: curve,
       hazard: hazardType,
       hazardPos: hazardPos,
       dropPos: dropPos,
@@ -1548,11 +2046,11 @@ async function executeShot() {
       final: { ...playerPos }
     });
 
+    isShotAnimating = false;
     updateScoreboard();
     render();
     keepBallInView();
 
-    const hazardName = landingTerrain === 'water' ? 'Water hazard' : 'Out of bounds in trees';
     document.getElementById('status-message').innerText = `${hazardName}! +1 penalty stroke. Ball placed on nearest land.`;
   } else {
     playerPos = { q: landingHex.q, r: landingHex.r };
@@ -1566,12 +2064,20 @@ async function executeShot() {
       if (!isLand(slideQ, slideR)) {
         const nearestLand = findNearestLand(slideQ, slideR);
         slopeTo = { q: nearestLand.q, r: nearestLand.r };
-        playerPos.q = nearestLand.q, r = nearestLand.r;
+        playerPos.q = nearestLand.q;
+        playerPos.r = nearestLand.r;
       } else {
         slopeTo = { q: slideQ, r: slideR };
         playerPos.q = slideQ;
         playerPos.r = slideR;
       }
+      document.getElementById('status-message').innerText = 'Contour slope break slide!';
+      await animateSlopeSlide(hexToPixel(slopeFrom.q, slopeFrom.r), hexToPixel(slopeTo.q, slopeTo.r));
+    }
+
+    const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
+    if (finalTerrain === 'hole') {
+      await animateCupSink(hexToPixel(playerPos.q, playerPos.r));
     }
 
     shotTrails.push({
@@ -1581,6 +2087,7 @@ async function executeShot() {
       aimed: aimedPos,
       hasScatter: scatDist > 0,
       scatter: scatterPos,
+      curve: curve,
       hazard: null,
       hazardPos: null,
       dropPos: null,
@@ -1589,11 +2096,11 @@ async function executeShot() {
       final: { ...playerPos }
     });
 
+    isShotAnimating = false;
     updateScoreboard();
     render();
     keepBallInView();
 
-    const finalTerrain = getTerrainAt(playerPos.q, playerPos.r);
     if (finalTerrain === 'hole') {
       recordHoleFinish();
       const diff = strokeCount - currentHole.par;
@@ -1607,10 +2114,25 @@ async function executeShot() {
   updateControlsState();
 }
 
-function takeGimme() {
+async function takeGimme() {
+  if (isShotAnimating) return;
+  isShotAnimating = true;
+
+  const rollBtn = document.getElementById('roll-btn');
+  const gimmeBtn = document.getElementById('gimme-btn');
+  if (rollBtn) rollBtn.disabled = true;
+  if (gimmeBtn) gimmeBtn.disabled = true;
+
   const shotStart = { ...playerPos };
   strokeCount += 1;
   const holePos = getHolePos();
+  const pStart = hexToPixel(shotStart.q, shotStart.r);
+  const pHole = hexToPixel(holePos.q, holePos.r);
+  const curve = buildShotCurve(pStart, pHole, pHole, false);
+
+  await animateShotFlight(curve, 'putter', 1);
+  await animateCupSink(pHole);
+
   playerPos = { ...holePos };
 
   shotTrails.push({
@@ -1620,6 +2142,7 @@ function takeGimme() {
     aimed: { ...holePos },
     hasScatter: false,
     scatter: null,
+    curve: curve,
     hazard: null,
     hazardPos: null,
     dropPos: null,
@@ -1633,6 +2156,7 @@ function takeGimme() {
   const diffName = diff <= -2 ? 'Eagle!' : diff === -1 ? 'Birdie!' : diff === 0 ? 'Par!' : diff === 1 ? 'Bogey.' : 'Double Bogey+.';
   document.getElementById('status-message').innerText = `Gimme taken (+1 stroke)! Finished in ${strokeCount} (${diffName})`;
   
+  isShotAnimating = false;
   updateControlsState();
   render();
 }
@@ -1765,6 +2289,7 @@ document.getElementById('modal-restart-course-btn').addEventListener('click', ()
 // Aim pills buttons
 document.querySelectorAll('.aim-pill').forEach((btn) => {
   btn.addEventListener('click', (e) => {
+    if (isShotAnimating) return;
     const dir = parseInt(e.currentTarget.getAttribute('data-dir'), 10);
     syncAimUI(dir);
     render();
@@ -1775,6 +2300,7 @@ document.querySelectorAll('.aim-pill').forEach((btn) => {
 const clubContainer = document.getElementById('club-pills-container');
 if (clubContainer) {
   clubContainer.addEventListener('click', (e) => {
+    if (isShotAnimating) return;
     const box = e.target.closest('.club-box');
     if (box && !box.disabled) {
       const clubId = box.getAttribute('data-club');
