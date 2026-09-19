@@ -9,7 +9,7 @@ const ORIGIN_Y = 395;
 
 // Camera state for zoomable and scrollable/pannable hole view
 const camera = {
-  scale: 1.0,
+  scale: 1.15,
   panX: 0,
   panY: 0,
   minScale: 0.4,
@@ -458,7 +458,10 @@ function startCourse(courseKey) {
   document.getElementById('game-screen').style.display = 'flex';
 
   loadHole(0);
-  requestAnimationFrame(() => fitHole());
+  requestAnimationFrame(() => {
+    resizeCanvas();
+    centerOnBall(true);
+  });
 }
 
 function returnToClubhouse() {
@@ -502,7 +505,8 @@ function loadHole(index) {
 
   syncAimUI(0);
   updateControlsState();
-  fitHole();
+  resizeCanvas();
+  centerOnBall(true);
 }
 
 function hexToPixel(q, r) {
@@ -1300,10 +1304,11 @@ function clampCamera() {
   const cssWidth = canvas.width / dpr;
   const cssHeight = canvas.height / dpr;
 
-  const worldMinX = -20;
-  const worldMaxX = 380;
-  const worldMinY = -80;
-  const worldMaxY = 460;
+  const worldMinX = -40;
+  const worldMaxX = 400;
+  const worldMinY = -120;
+  const ballPx = (playerPos && playerPos.q !== undefined) ? hexToPixel(playerPos.q, playerPos.r) : { x: 180, y: 395 };
+  const worldMaxY = Math.max(520, ballPx.y + 140);
 
   const minPanX = cssWidth - worldMaxX * camera.scale - 60;
   const maxPanX = -worldMinX * camera.scale + 60;
@@ -1392,19 +1397,25 @@ function fitHole() {
   render();
 }
 
-function centerOnBall() {
+function centerOnBall(positionAtBottom = true) {
   resizeCanvas();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const cssWidth = canvas.width / dpr;
   const cssHeight = canvas.height / dpr;
 
-  if (camera.scale < 1.15) {
-    camera.scale = 1.15;
-  }
+  // Zoom to the 'ball' zoom option (115%)
+  camera.scale = 1.15;
 
   const ballPx = hexToPixel(playerPos.q, playerPos.r);
   camera.panX = cssWidth / 2 - ballPx.x * camera.scale;
-  camera.panY = cssHeight / 2 - ballPx.y * camera.scale;
+
+  if (positionAtBottom) {
+    // Position the ball towards the bottom of the view (~78% down), leaving fairway and green in front
+    const targetY = cssHeight * 0.78;
+    camera.panY = targetY - ballPx.y * camera.scale;
+  } else {
+    camera.panY = cssHeight / 2 - ballPx.y * camera.scale;
+  }
 
   clampCamera();
   updateZoomUI();
