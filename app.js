@@ -143,11 +143,16 @@ function getClubRange(club, terrain) {
   else if (club === 'shortIron') { min = 1; max = 6; }
   else if (club === 'putter') { min = 1; max = 3; }
 
-  if (club !== 'putter') {
-    if (terrain === 'fairway') { min += 1; max += 1; }
-    if (terrain === 'rough') { min = Math.max(1, min - 1); max = Math.max(1, max - 1); }
-    if (terrain === 'deep_rough') { min = Math.max(1, min - 2); max = Math.max(1, max - 2); }
+  if (terrain === 'sand') {
+    // Sand: short iron the only available club, at -2 disadvantage, min 0
+    min = Math.max(0, min - 2);
+    max = Math.max(0, max - 2);
+  } else if (terrain === 'rough' || terrain === 'deep_rough') {
+    // Rough: -1 to all clubs, min 1
+    min = Math.max(1, min - 1);
+    max = Math.max(1, max - 1);
   }
+  // No other modifiers (no +1 on the fairway)
   return { min, max };
 }
 
@@ -335,17 +340,22 @@ function updateClubOptions() {
 
   updateCrazyStatusBar();
 
+  const isRough = currentTerrain === 'rough' || currentTerrain === 'deep_rough';
+  const isSand = currentTerrain === 'sand';
+
   const standardClubs = [
     { id: 'driver', title: 'Driver', sub: '1D6+4', allowed: ['tee'] },
-    { id: 'longIron', title: 'Long Iron', sub: '1D6+2', allowed: ['tee', 'fairway'] },
-    { id: 'shortIron', title: 'Short Iron', sub: '1D6', allowed: ['tee', 'fairway', 'rough', 'deep_rough', 'sand', 'green'] },
-    { id: 'putter', title: 'Putter', sub: '1D6: 1-3', allowed: ['tee', 'fairway', 'rough', 'deep_rough', 'sand', 'green'] }
+    { id: 'longIron', title: 'Long Iron', sub: isRough ? '1D6+1' : '1D6+2', allowed: isSand ? [] : ['tee', 'fairway', 'rough', 'deep_rough'] },
+    { id: 'shortIron', title: 'Short Iron', sub: isSand ? '1D6-2' : isRough ? '1D6-1' : '1D6', allowed: ['tee', 'fairway', 'rough', 'deep_rough', 'sand', 'green'] },
+    { id: 'putter', title: 'Putter', sub: isRough ? '1D6: 1-2' : '1D6: 1-3', allowed: isSand ? [] : ['tee', 'fairway', 'rough', 'deep_rough', 'green'] }
   ];
 
   // Check if current club is allowed from current terrain
   const currentAllowed = standardClubs.find(c => c.id === currentSelectedClub && c.allowed.includes(currentTerrain));
   if (!currentAllowed) {
-    if (currentTerrain === 'green') {
+    if (isSand) {
+      currentSelectedClub = 'shortIron';
+    } else if (currentTerrain === 'green') {
       currentSelectedClub = 'putter';
     } else if (currentTerrain === 'fairway') {
       currentSelectedClub = 'longIron';
@@ -392,9 +402,32 @@ function updateControlsState() {
     return;
   }
 
-  rollBtn.style.display = 'inline-block';
+  rollBtn.style.display = 'flex';
   rollBtn.disabled = false;
   nextBtn.style.display = 'none';
+
+  // Discrete note on Roll shot button when applicable:
+  // Rough: -1 to all clubs, min 1
+  // Sand: short iron the only available club, at -2 disadvantage, min 0
+  // No other modifiers (no +1 on the fairway)
+  const rollBtnNote = document.getElementById('roll-btn-note');
+  if (rollBtnNote) {
+    if (!currentHole || !currentHole.isCrazyGolf) {
+      if (finalTerrain === 'rough' || finalTerrain === 'deep_rough') {
+        rollBtnNote.style.display = 'block';
+        rollBtnNote.textContent = 'Rough: -1 to all clubs, min 1';
+      } else if (finalTerrain === 'sand') {
+        rollBtnNote.style.display = 'block';
+        rollBtnNote.textContent = 'Sand: short iron the only available club, at -2 disadvantage, min 0';
+      } else {
+        rollBtnNote.style.display = 'none';
+        rollBtnNote.textContent = '';
+      }
+    } else {
+      rollBtnNote.style.display = 'none';
+      rollBtnNote.textContent = '';
+    }
+  }
 
   if (isAdjacentToHole(playerPos)) {
     gimmeBtn.style.display = 'inline-block';
@@ -456,7 +489,6 @@ function loadHole(index) {
 
   syncAimUI(0);
   updateControlsState();
-  updateKeyDisplay();
   fitHole();
 }
 
@@ -772,8 +804,6 @@ function render() {
   ctx.stroke();
 
   ctx.restore();
-
-  renderMinimap();
 }
 
 function resizeCanvas() {
@@ -964,307 +994,11 @@ function dismissScrollHint() {
   }
 }
 
-// ==========================================
-// HOLE PREVIEW MINIMAP LOGIC
-// ==========================================
-
-let isMinimapMinimised = false;
-let minimapTransform = { scale: 1, offsetX: 0, offsetY: 0, minX: 0, maxX: 0, minY: 0, maxY: 0 };
-
-function toggleMinimap(minimise) {
-  const container = document.getElementById('hole-minimap-container');
-  if (!container) return;
-
-  if (typeof minimise === 'boolean') {
-    isMinimapMinimised = minimise;
-  } else {
-    isMinimapMinimised = !isMinimapMinimised;
-  }
-
-  if (isMinimapMinimised) {
-    container.classList.remove('minimap-expanded');
-    container.classList.add('minimap-minimised');
-  } else {
-    container.classList.remove('minimap-minimised');
-    container.classList.add('minimap-expanded');
-    renderMinimap();
-  }
-}
-
-function renderMinimap() {
-  const container = document.getElementById('hole-minimap-container');
-  if (!container || isMinimapMinimised) return;
-
-  const mmCanvas = document.getElementById('minimap-canvas');
-  if (!mmCanvas || !currentHole) return;
-  const mmCtx = mmCanvas.getContext('2d');
-
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const cssW = 104;
-  const cssH = 122;
-
-  if (mmCanvas.width !== Math.floor(cssW * dpr) || mmCanvas.height !== Math.floor(cssH * dpr)) {
-    mmCanvas.width = Math.floor(cssW * dpr);
-    mmCanvas.height = Math.floor(cssH * dpr);
-    mmCanvas.style.width = cssW + 'px';
-    mmCanvas.style.height = cssH + 'px';
-  }
-
-  mmCtx.save();
-  mmCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  mmCtx.clearRect(0, 0, cssW, cssH);
-
-  // Background tint for minimap terrain
-  mmCtx.fillStyle = '#b7cf99';
-  mmCtx.fillRect(0, 0, cssW, cssH);
-
-  // Calculate bounding box of this hole
-  let minQ = currentHole.tee.q;
-  let maxQ = currentHole.tee.q;
-  let minR = currentHole.tee.r;
-  let maxR = currentHole.tee.r;
-
-  for (const key of Object.keys(currentHole.layout)) {
-    const [qStr, rStr] = key.split(',');
-    const q = parseInt(qStr, 10);
-    const r = parseInt(rStr, 10);
-    if (!isNaN(q) && !isNaN(r)) {
-      if (q < minQ) minQ = q;
-      if (q > maxQ) maxQ = q;
-      if (r < minR) minR = r;
-      if (r > maxR) maxR = r;
-    }
-  }
-
-  const holePos = getHolePos();
-  if (holePos) {
-    minQ = Math.min(minQ, holePos.q);
-    maxQ = Math.max(maxQ, holePos.q);
-    minR = Math.min(minR, holePos.r);
-    maxR = Math.max(maxR, holePos.r);
-  }
-
-  minQ -= 1;
-  maxQ += 1;
-  minR -= 1;
-  maxR += 1;
-
-  const p1 = hexToPixel(minQ, minR);
-  const p2 = hexToPixel(maxQ, minR);
-  const p3 = hexToPixel(minQ, maxR);
-  const p4 = hexToPixel(maxQ, maxR);
-
-  const minX = Math.min(p1.x, p2.x, p3.x, p4.x) - 12;
-  const maxX = Math.max(p1.x, p2.x, p3.x, p4.x) + 12;
-  const minY = Math.min(p1.y, p2.y, p3.y, p4.y) - 12;
-  const maxY = Math.max(p1.y, p2.y, p3.y, p4.y) + 12;
-
-  const boxW = Math.max(80, maxX - minX);
-  const boxH = Math.max(100, maxY - minY);
-
-  const pad = 6;
-  const scale = Math.min((cssW - pad * 2) / boxW, (cssH - pad * 2) / boxH);
-  const offsetX = (cssW - (maxX - minX) * scale) / 2 - minX * scale;
-  const offsetY = (cssH - (maxY - minY) * scale) / 2 - minY * scale;
-
-  minimapTransform = { scale, offsetX, offsetY, minX, maxX, minY, maxY };
-
-  // Draw tiles
-  const hexMmRadius = Math.max(1.8, HEX_RADIUS * scale);
-
-  for (const key of Object.keys(currentHole.layout)) {
-    const [qStr, rStr] = key.split(',');
-    const q = parseInt(qStr, 10);
-    const r = parseInt(rStr, 10);
-    const type = currentHole.layout[key];
-    const { x, y } = hexToPixel(q, r);
-    const mx = x * scale + offsetX;
-    const my = y * scale + offsetY;
-
-    let col = TERRAIN[type] ? TERRAIN[type].color : '#cddc39';
-    if (type === 'windmill') {
-      col = windmillOpen ? '#00c853' : '#d50000';
-    }
-
-    mmCtx.beginPath();
-    mmCtx.arc(mx, my, hexMmRadius * 0.9, 0, 2 * Math.PI);
-    mmCtx.fillStyle = col;
-    mmCtx.fill();
-  }
-
-  // Draw Tee
-  const teePx = hexToPixel(currentHole.tee.q, currentHole.tee.r);
-  const teeMx = teePx.x * scale + offsetX;
-  const teeMy = teePx.y * scale + offsetY;
-  mmCtx.beginPath();
-  mmCtx.arc(teeMx, teeMy, 2.5, 0, 2 * Math.PI);
-  mmCtx.fillStyle = '#827717';
-  mmCtx.fill();
-  mmCtx.strokeStyle = '#ffffff';
-  mmCtx.lineWidth = 0.8;
-  mmCtx.stroke();
-
-  // Draw Hole Pin
-  if (holePos) {
-    const cupPx = hexToPixel(holePos.q, holePos.r);
-    const cupMx = cupPx.x * scale + offsetX;
-    const cupMy = cupPx.y * scale + offsetY;
-
-    // Cup
-    mmCtx.beginPath();
-    mmCtx.arc(cupMx, cupMy, 2.6, 0, 2 * Math.PI);
-    mmCtx.fillStyle = '#1a1a1a';
-    mmCtx.fill();
-
-    // Flag pole & red pennant
-    mmCtx.beginPath();
-    mmCtx.moveTo(cupMx, cupMy);
-    mmCtx.lineTo(cupMx, cupMy - 6.5);
-    mmCtx.strokeStyle = '#ffffff';
-    mmCtx.lineWidth = 1;
-    mmCtx.stroke();
-
-    mmCtx.beginPath();
-    mmCtx.moveTo(cupMx, cupMy - 6.5);
-    mmCtx.lineTo(cupMx + 4, cupMy - 4.5);
-    mmCtx.lineTo(cupMx, cupMy - 2.5);
-    mmCtx.fillStyle = '#d32f2f';
-    mmCtx.fill();
-  }
-
-  // Draw Player Ball
-  const ballPx = hexToPixel(playerPos.q, playerPos.r);
-  const bMx = ballPx.x * scale + offsetX;
-  const bMy = ballPx.y * scale + offsetY;
-
-  // Pulse halo ring
-  mmCtx.beginPath();
-  mmCtx.arc(bMx, bMy, 4.5, 0, 2 * Math.PI);
-  mmCtx.fillStyle = 'rgba(233, 30, 99, 0.4)';
-  mmCtx.fill();
-
-  // Ball core
-  mmCtx.beginPath();
-  mmCtx.arc(bMx, bMy, 2.8, 0, 2 * Math.PI);
-  mmCtx.fillStyle = '#ffffff';
-  mmCtx.fill();
-  mmCtx.strokeStyle = '#1a1a1a';
-  mmCtx.lineWidth = 1;
-  mmCtx.stroke();
-
-  // Draw Viewport Camera Frustum/Box
-  const mainDpr = Math.min(window.devicePixelRatio || 1, 2);
-  const mainCssW = canvas.width / mainDpr;
-  const mainCssH = canvas.height / mainDpr;
-
-  const viewWorldX = -camera.panX / camera.scale;
-  const viewWorldY = -camera.panY / camera.scale;
-  const viewWorldW = mainCssW / camera.scale;
-  const viewWorldH = mainCssH / camera.scale;
-
-  const camMx = viewWorldX * scale + offsetX;
-  const camMy = viewWorldY * scale + offsetY;
-  const camMw = viewWorldW * scale;
-  const camMh = viewWorldH * scale;
-
-  mmCtx.strokeStyle = '#1a1a1a';
-  mmCtx.lineWidth = 1.2;
-  mmCtx.setLineDash([2, 2]);
-  mmCtx.strokeRect(camMx, camMy, camMw, camMh);
-  mmCtx.setLineDash([]);
-  mmCtx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-  mmCtx.fillRect(camMx, camMy, camMw, camMh);
-
-  mmCtx.restore();
-}
-
-// ==========================================
-// COURSE KEY & TERRAIN MODIFIERS
-// ==========================================
-
-const TERRAIN_RULES = {
-  tee: { name: 'Tee Area', color: '#cddc39', modifier: 'Starting zone. Driver (+4 distance) allowed. Clean lie.' },
-  fairway: { name: 'Fairway', color: '#4caf50', modifier: 'Clean lie. +1 tile distance bonus for irons.' },
-  green: { name: 'Green', color: '#2e7d32', modifier: 'Putting surface. Putter only (1-3 tiles).' },
-  rough: { name: 'Rough', color: '#dcedc8', modifier: 'Tall grass lie. -1 tile distance. Short Iron/Putter only.' },
-  deep_rough: { name: 'Deep Rough', color: '#aed581', modifier: 'Heavy grass. -2 tile distance. Short Iron only.' },
-  sand: { name: 'Bunker / Sand', color: '#fbc02d', modifier: 'Sand trap. -1 to dice roll. Short Iron/Putter only.' },
-  water: { name: 'Water Hazard', color: '#0288d1', modifier: 'Penalty hazard (+1 stroke). Ball dropped on nearest land.' },
-  trees: { name: 'Trees / Woods', color: '#81c784', modifier: 'Out of bounds (+1 stroke). Ball dropped on nearest land.' },
-  hole: { name: 'Cup & Pin', color: '#1a1a1a', modifier: 'Target cup. Land here to complete the hole!' },
-  crazy_fairway: { name: 'Carpet Fairway', color: '#00897b', modifier: 'Mini-golf felt carpet. True roll, standard lie.' },
-  bumper: { name: 'Bumper Rail', color: '#e91e63', modifier: 'Rubber cushion rail. Ball ricochets & angles off.' },
-  windmill: { name: 'Windmill Gate', color: '#00c853', modifier: 'Spinning sails. Time your shot or bank shot around.' },
-  tube_in: { name: 'Warp Tube (In)', color: '#00b4d8', modifier: 'Pneumatic portal. Teleports ball to output tube.' },
-  tube_out: { name: 'Warp Tube (Out)', color: '#76ff03', modifier: 'Portal exit. Ball shoots forward with exit momentum.' },
-  ramp: { name: 'Speed Ramp', color: '#ffd600', modifier: 'Accelerator ramp. Launches ball with extra speed.' },
-  funnel: { name: 'Loop-de-Loop', color: '#7c4dff', modifier: 'Loop funnel. Requires high speed roll to traverse.' },
-  slope: { name: 'Slope Contour', color: '#80deea', modifier: 'Slope contour. Ball slides 1 tile in arrow direction.' }
-};
-
-let isKeyMinimised = false;
-
-export function toggleKey(minimise = null) {
-  const container = document.getElementById('hole-key-container');
-  if (!container) return;
-
-  if (typeof minimise === 'boolean') {
-    isKeyMinimised = minimise;
-  } else {
-    isKeyMinimised = !isKeyMinimised;
-  }
-
-  if (isKeyMinimised) {
-    container.classList.remove('key-expanded');
-    container.classList.add('key-minimised');
-  } else {
-    container.classList.remove('key-minimised');
-    container.classList.add('key-expanded');
-    updateKeyDisplay();
-  }
-}
-
-export function updateKeyDisplay() {
-  const list = document.getElementById('key-terrain-list');
-  if (!list || !currentHole) return;
-
-  const presentTerrains = new Set();
-  if (currentHole.layout) {
-    Object.values(currentHole.layout).forEach((t) => presentTerrains.add(t));
-  }
-  if (currentHole.slopeArrows && Object.keys(currentHole.slopeArrows).length > 0) {
-    presentTerrains.add('slope');
-  }
-
-  list.innerHTML = '';
-
-  const order = [
-    'tee', 'fairway', 'crazy_fairway', 'green', 'hole',
-    'rough', 'deep_rough', 'sand', 'water', 'trees',
-    'bumper', 'windmill', 'tube_in', 'tube_out', 'ramp', 'funnel', 'slope'
-  ];
-
-  order.forEach((type) => {
-    if (presentTerrains.has(type)) {
-      const info = TERRAIN_RULES[type] || {
-        name: type,
-        color: TERRAIN[type] ? TERRAIN[type].color : '#cccccc',
-        modifier: 'Special hole terrain'
-      };
-
-      const item = document.createElement('div');
-      item.className = 'key-terrain-item';
-      item.innerHTML = `
-        <span class="key-swatch" style="background-color: ${info.color};"></span>
-        <div class="key-item-content">
-          <span class="key-item-name">${info.name}</span>
-          <span class="key-item-mod">${info.modifier}</span>
-        </div>
-      `;
-      list.appendChild(item);
-    }
-  });
-}
+// Minimap & Key removed per UI specification
+export function toggleMinimap() {}
+export function renderMinimap() {}
+export function toggleKey() {}
+export function updateKeyDisplay() {}
 
 export function renderDieFace(elementId, value) {
   const el = typeof elementId === 'string' ? document.getElementById(elementId) : elementId;
@@ -1372,39 +1106,27 @@ export function getDistanceExplanation(club, distRoll, effectiveRoll, baseDistan
   }
 
   // Traditional Golf
+  if (currentTerrain === 'sand') {
+    return `${distRoll}-2 = distance ${baseDistance} (min 0)`;
+  }
+
+  if (currentTerrain === 'rough' || currentTerrain === 'deep_rough') {
+    if (club === 'driver') return `${distRoll}+4-1 = distance ${baseDistance} (min 1)`;
+    if (club === 'longIron') return `${distRoll}+2-1 = distance ${baseDistance} (min 1)`;
+    if (club === 'shortIron') return `${distRoll}-1 = distance ${baseDistance} (min 1)`;
+    if (club === 'putter') return `Roll ${distRoll}-1 = distance ${baseDistance} (min 1)`;
+  }
+
+  // Fairway, Tee, Green: No other modifiers (no +1 on the fairway)
   if (club === 'driver') {
-    if (currentTerrain === 'sand') {
-      return `${distRoll}+4-1 = distance ${baseDistance}`;
-    }
     return `${distRoll}+4 = distance ${baseDistance}`;
   }
-
   if (club === 'longIron') {
-    if (currentTerrain === 'fairway') {
-      return `${distRoll}+2+1 = distance ${baseDistance}`;
-    } else if (currentTerrain === 'sand') {
-      return `${distRoll}+2-1 = distance ${baseDistance}`;
-    } else if (currentTerrain === 'rough') {
-      return `${distRoll}+2-1 = distance ${baseDistance}`;
-    } else if (currentTerrain === 'deep_rough') {
-      return `${distRoll}+2-2 = distance ${baseDistance}`;
-    }
     return `${distRoll}+2 = distance ${baseDistance}`;
   }
-
   if (club === 'shortIron') {
-    if (currentTerrain === 'fairway') {
-      return `${distRoll}+1 = distance ${baseDistance}`;
-    } else if (currentTerrain === 'rough') {
-      return `${distRoll}-1 = distance ${baseDistance}`;
-    } else if (currentTerrain === 'deep_rough') {
-      return `${distRoll}-2 = distance ${baseDistance}`;
-    } else if (currentTerrain === 'sand') {
-      return `${distRoll}-1 = distance ${baseDistance}`;
-    }
-    return baseDistance === 1 ? '1 tile' : `${baseDistance} tiles`;
+    return `${distRoll} = distance ${baseDistance}`;
   }
-
   if (club === 'putter') {
     if (distRoll !== baseDistance) {
       return `Roll ${distRoll} = distance ${baseDistance}`;
@@ -1720,25 +1442,28 @@ async function executeShot() {
   const distRoll = Math.floor(Math.random() * 6) + 1;
   await animateDie('die-dist', distRoll);
 
-  // When playing in sand, add -1 to the D6 roll (min 0)
-  let effectiveRoll = distRoll;
-  if (currentTerrain === 'sand') {
-    effectiveRoll = Math.max(0, distRoll - 1);
-  }
-
   let baseDistance = 0;
-  if (club === 'driver') baseDistance = effectiveRoll + 4;
-  else if (club === 'longIron') baseDistance = effectiveRoll + 2;
-  else if (club === 'shortIron') baseDistance = effectiveRoll;
-  else if (club === 'putter') baseDistance = effectiveRoll <= 0 ? 0 : effectiveRoll <= 2 ? 1 : effectiveRoll <= 4 ? 2 : 3;
-
-  if (club !== 'putter') {
-    if (currentTerrain === 'fairway') baseDistance += 1;
-    if (['rough'].includes(currentTerrain)) baseDistance = Math.max(1, baseDistance - 1);
-    if (['deep_rough'].includes(currentTerrain)) baseDistance = Math.max(1, baseDistance - 2);
+  if (currentTerrain === 'sand') {
+    // Sand: short iron the only available club, at -2 disadvantage, min 0
+    baseDistance = Math.max(0, distRoll - 2);
+  } else if (currentTerrain === 'rough' || currentTerrain === 'deep_rough') {
+    // Rough: -1 to all clubs, min 1
+    if (club === 'driver') baseDistance = Math.max(1, distRoll + 4 - 1);
+    else if (club === 'longIron') baseDistance = Math.max(1, distRoll + 2 - 1);
+    else if (club === 'shortIron') baseDistance = Math.max(1, distRoll - 1);
+    else if (club === 'putter') {
+      const putterBase = distRoll <= 2 ? 1 : distRoll <= 4 ? 2 : 3;
+      baseDistance = Math.max(1, putterBase - 1);
+    }
+  } else {
+    // Fairway, Tee, Green: No other modifiers (no +1 on the fairway)
+    if (club === 'driver') baseDistance = distRoll + 4;
+    else if (club === 'longIron') baseDistance = distRoll + 2;
+    else if (club === 'shortIron') baseDistance = distRoll;
+    else if (club === 'putter') baseDistance = distRoll <= 2 ? 1 : distRoll <= 4 ? 2 : 3;
   }
 
-  document.getElementById('sub-dist').innerText = getDistanceExplanation(club, distRoll, effectiveRoll, baseDistance, currentTerrain, false);
+  document.getElementById('sub-dist').innerText = getDistanceExplanation(club, distRoll, distRoll, baseDistance, currentTerrain, false);
 
   // 2. Scatter Roll
   let scatDist = 0;
@@ -2243,8 +1968,6 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'b' || e.key === 'B' || e.key === 'c' || e.key === 'C') {
     centerOnBall();
     dismissScrollHint();
-  } else if (e.key === 'm' || e.key === 'M') {
-    toggleMinimap();
   } else if (e.key === 'ArrowLeft') {
     camera.panX += panStep;
     clampCamera();
@@ -2267,65 +1990,6 @@ window.addEventListener('keydown', (e) => {
     dismissScrollHint();
   }
 });
-
-// Minimap UI Event Listeners
-const minimapMinimiseBtn = document.getElementById('minimap-minimise-btn');
-if (minimapMinimiseBtn) {
-  minimapMinimiseBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleMinimap(true);
-  });
-}
-
-const minimapRestoreBtn = document.getElementById('minimap-restore-btn');
-if (minimapRestoreBtn) {
-  minimapRestoreBtn.addEventListener('click', () => {
-    toggleMinimap(false);
-  });
-}
-
-// Course Key UI Event Listeners
-const keyMinimiseBtn = document.getElementById('key-minimise-btn');
-if (keyMinimiseBtn) {
-  keyMinimiseBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleKey(true);
-  });
-}
-
-const keyRestoreBtn = document.getElementById('key-restore-btn');
-if (keyRestoreBtn) {
-  keyRestoreBtn.addEventListener('click', () => {
-    toggleKey(false);
-  });
-}
-
-// Initial Key render
-updateKeyDisplay();
-
-const minimapCanvas = document.getElementById('minimap-canvas');
-if (minimapCanvas) {
-  minimapCanvas.addEventListener('click', (e) => {
-    if (!minimapTransform.scale) return;
-    const rect = minimapCanvas.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-
-    const wx = (clickX - minimapTransform.offsetX) / minimapTransform.scale;
-    const wy = (clickY - minimapTransform.offsetY) / minimapTransform.scale;
-
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const cssWidth = canvas.width / dpr;
-    const cssHeight = canvas.height / dpr;
-
-    camera.panX = cssWidth / 2 - wx * camera.scale;
-    camera.panY = cssHeight / 2 - wy * camera.scale;
-
-    clampCamera();
-    render();
-    dismissScrollHint();
-  });
-}
 
 // Initialize Hole of the Day UI card on landing screen
 updateDailyHoleCardUI();

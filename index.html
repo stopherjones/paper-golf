@@ -162,109 +162,6 @@
       <main id="canvas-wrapper">
         <canvas id="golf-canvas"></canvas>
 
-        <!-- Hole Preview Minimap (Bottom Left) -->
-        <div id="hole-minimap-container" class="minimap-expanded">
-          <!-- Restore Button (Visible when minimised) -->
-          <button type="button" id="minimap-restore-btn" class="minimap-pill-btn" aria-label="Restore Hole Preview" title="Restore Hole Preview">
-            <span class="minimap-icon">🗺️</span> Preview <span class="minimap-expand-arrow">▲</span>
-          </button>
-
-          <!-- Expanded Minimap Window -->
-          <div id="minimap-card">
-            <div id="minimap-header">
-              <span class="minimap-tag-label">PREVIEW</span>
-              <button type="button" id="minimap-minimise-btn" class="minimap-header-btn" aria-label="Minimise Hole Preview" title="Minimise Preview">_</button>
-            </div>
-            <div id="minimap-canvas-holder">
-              <canvas id="minimap-canvas" width="106" height="126"></canvas>
-            </div>
-            <div id="minimap-footer">
-              <span class="minimap-hint">Tap to pan</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Hole Key & Direction Compass (Bottom Right) -->
-        <div id="hole-key-container" class="key-expanded">
-          <!-- Restore Button (Visible when minimised) -->
-          <button type="button" id="key-restore-btn" class="key-pill-btn" aria-label="Show Course Key" title="Show Course Key">
-            <span class="key-icon">📖</span> Key <span class="key-expand-arrow">▲</span>
-          </button>
-
-          <!-- Expanded Key Card -->
-          <div id="key-card">
-            <div id="key-header">
-              <span class="key-title">HOLE KEY</span>
-              <button type="button" id="key-minimise-btn" class="key-header-btn" aria-label="Minimise Key" title="Minimise Key">_</button>
-            </div>
-            <div id="key-body">
-              <!-- Direction Dice Hex Compass -->
-              <div class="key-section">
-                <div class="key-section-header">DIRECTION ROLL (1D6)</div>
-                <div class="key-compass-box">
-                  <svg id="key-compass-svg" viewBox="0 0 130 130" width="108" height="108" aria-label="Hex Direction Dice Compass">
-                    <!-- Spokes -->
-                    <line x1="65" y1="65" x2="65" y2="30" stroke="#a49787" stroke-width="1.5" stroke-dasharray="2 2" />
-                    <line x1="65" y1="65" x2="98" y2="46" stroke="#a49787" stroke-width="1.5" stroke-dasharray="2 2" />
-                    <line x1="65" y1="65" x2="98" y2="84" stroke="#a49787" stroke-width="1.5" stroke-dasharray="2 2" />
-                    <line x1="65" y1="65" x2="65" y2="100" stroke="#a49787" stroke-width="1.5" stroke-dasharray="2 2" />
-                    <line x1="65" y1="65" x2="32" y2="84" stroke="#a49787" stroke-width="1.5" stroke-dasharray="2 2" />
-                    <line x1="65" y1="65" x2="32" y2="46" stroke="#a49787" stroke-width="1.5" stroke-dasharray="2 2" />
-
-                    <!-- Center Ball / Dice indicator -->
-                    <circle cx="65" cy="65" r="11" fill="#fdfbf7" stroke="#1a1a1a" stroke-width="1.5"/>
-                    <text x="65" y="68.5" text-anchor="middle" font-size="8" font-weight="900" fill="#1a1a1a" font-family="monospace">1D6</text>
-
-                    <!-- 1: N (top) -->
-                    <g class="compass-node" data-dir="0">
-                      <rect x="52" y="10" width="26" height="18" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
-                      <text x="65" y="23" text-anchor="middle" font-size="9" font-weight="900" fill="#1a1a1a">1: N↑</text>
-                    </g>
-
-                    <!-- 2: NE (top-right) -->
-                    <g class="compass-node" data-dir="1">
-                      <rect x="86" y="36" width="32" height="18" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
-                      <text x="102" y="49" text-anchor="middle" font-size="9" font-weight="900" fill="#1a1a1a">2: NE↗</text>
-                    </g>
-
-                    <!-- 3: SE (bottom-right) -->
-                    <g class="compass-node" data-dir="2">
-                      <rect x="86" y="76" width="32" height="18" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
-                      <text x="102" y="89" text-anchor="middle" font-size="9" font-weight="900" fill="#1a1a1a">3: SE↘</text>
-                    </g>
-
-                    <!-- 4: S (bottom) -->
-                    <g class="compass-node" data-dir="3">
-                      <rect x="52" y="102" width="26" height="18" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
-                      <text x="65" y="115" text-anchor="middle" font-size="9" font-weight="900" fill="#1a1a1a">4: S↓</text>
-                    </g>
-
-                    <!-- 5: SW (bottom-left) -->
-                    <g class="compass-node" data-dir="4">
-                      <rect x="12" y="76" width="32" height="18" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
-                      <text x="28" y="89" text-anchor="middle" font-size="9" font-weight="900" fill="#1a1a1a">5: SW↙</text>
-                    </g>
-
-                    <!-- 6: NW (top-left) -->
-                    <g class="compass-node" data-dir="5">
-                      <rect x="12" y="36" width="32" height="18" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
-                      <text x="28" y="49" text-anchor="middle" font-size="9" font-weight="900" fill="#1a1a1a">6: NW↖</text>
-                    </g>
-                  </svg>
-                </div>
-              </div>
-
-              <!-- Terrain Modifiers for Current Hole -->
-              <div class="key-section">
-                <div class="key-section-header">HOLE TERRAIN</div>
-                <div id="key-terrain-list" class="key-terrain-list">
-                  <!-- Dynamically populated per hole -->
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div id="hole-nav-hud">
           <div class="hud-group">
             <button type="button" id="zoom-in-btn" class="hud-btn" aria-label="Zoom In" title="Zoom In">+</button>
@@ -301,7 +198,10 @@
 
         <!-- Action Buttons (Directly below club selection boxes) -->
         <div id="action-bar">
-          <button type="button" id="roll-btn">ROLL SHOT</button>
+          <button type="button" id="roll-btn">
+            <span class="roll-btn-main">ROLL SHOT</span>
+            <span id="roll-btn-note" class="roll-btn-note" style="display: none;"></span>
+          </button>
           <button type="button" id="gimme-btn" style="display: none;">GIMME (+1)</button>
           <button type="button" id="next-btn" style="display: none;">NEXT HOLE</button>
         </div>

@@ -1,6 +1,7 @@
 import { crazyHole } from './holes/crazyHole.js';
 import { parklandCourse } from './holes/parkland.js';
 import { linksCourse } from './holes/links.js';
+import { generateDailyHole } from './holes/dailyHole.js';
 
 const canvas = document.getElementById('edit-canvas');
 const ctx = canvas.getContext('2d');
@@ -465,7 +466,10 @@ export function loadHoleObject(holeObj) {
 export function loadPreset(key) {
   if (!key) return;
 
-  if (key === 'crazy') {
+  if (key === 'daily') {
+    const daily = generateDailyHole();
+    loadHoleObject(daily.holes[0]);
+  } else if (key === 'crazy') {
     loadHoleObject(crazyHole);
   } else if (key === 'parkland1') {
     loadHoleObject(parklandCourse[0]);
